@@ -1,0 +1,19 @@
+// Baseline — Prisma schema
+// Data model detail lands in BRA-34. This file is the minimal, valid
+// Supabase-backed setup so scaffolding (BRA-33) can generate a client and
+// run migrations once the database is connected.
+// Docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Prisma 7: connection URLs live outside the schema.
+//   - Migrations use DIRECT_URL (direct connection, port 5432) via prisma.config.ts.
+//   - The app passes the pooled DATABASE_URL (PgBouncer, port 6543) to PrismaClient
+//     at runtime in src/lib/prisma.ts.
