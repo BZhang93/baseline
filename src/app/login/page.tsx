@@ -1,18 +1,24 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { login, signup } from "./actions";
+import { login, signup, type AuthResult } from "./actions";
 
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  function handle(action: (fd: FormData) => Promise<string | void>) {
+  function handle(action: (fd: FormData) => Promise<AuthResult | void>) {
     return (formData: FormData) => {
       setError(null);
+      setNotice(null);
       startTransition(async () => {
-        const message = await action(formData);
-        if (message) setError(message);
+        const result = await action(formData);
+        if (result?.status === "error") {
+          setError(result.message);
+        } else if (result?.status === "confirm-email") {
+          setNotice("Check your email to confirm your account, then log in.");
+        }
       });
     };
   }
@@ -50,6 +56,7 @@ export default function LoginPage() {
         </label>
 
         {error && <p className="text-sm text-red-600">{error}</p>}
+        {notice && <p className="text-sm text-green-700">{notice}</p>}
 
         <div className="flex gap-3">
           <button

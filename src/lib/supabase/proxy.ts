@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { supabaseEnv } from "./env";
 
 // Refreshes the Supabase auth session on every request and keeps the auth
 // cookies in sync between the browser and the server. Called from src/proxy.ts.
@@ -8,27 +9,24 @@ import { NextResponse, type NextRequest } from "next/server";
 // behaviour is the same. See node_modules/next/dist/docs/.../16-proxy.md.
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
+  const { url, anonKey } = supabaseEnv();
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value),
-          );
-          response = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options),
-          );
-        },
+  const supabase = createServerClient(url, anonKey, {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll();
+      },
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value }) =>
+          request.cookies.set(name, value),
+        );
+        response = NextResponse.next({ request });
+        cookiesToSet.forEach(({ name, value, options }) =>
+          response.cookies.set(name, value, options),
+        );
       },
     },
-  );
+  });
 
   // IMPORTANT: do not run code between createServerClient and getUser(). A
   // simple mistake could make it very hard to debug intermittent logouts.
@@ -42,9 +40,9 @@ export async function updateSession(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isProtected = pathname.startsWith("/dashboard");
   if (!user && isProtected) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
-    return NextResponse.redirect(url);
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    return NextResponse.redirect(loginUrl);
   }
 
   return response;
