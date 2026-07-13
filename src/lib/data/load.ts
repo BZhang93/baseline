@@ -50,9 +50,15 @@ export async function loadIntoDatabase(
 
   // 2. Tournaments (+ their cutoff, if provided).
   let cutoffs = 0;
+  const missingCategories = new Set<string>();
   for (const t of tournaments) {
-    const categoryId =
-      categoryIdByKey.get(categoryKey(t.tour, t.tier, t.edition)) ?? null;
+    const key = categoryKey(t.tour, t.tier, t.edition);
+    const categoryId = categoryIdByKey.get(key) ?? null;
+    if (categoryId === null) {
+      // No matching category → this event will have no points/prize. Surface it
+      // so seed/scraper authors notice instead of silently shipping blank data.
+      missingCategories.add(key);
+    }
 
     const data = {
       tour: t.tour,
@@ -92,6 +98,14 @@ export async function loadIntoDatabase(
       });
       cutoffs++;
     }
+  }
+
+  if (missingCategories.size > 0) {
+    console.warn(
+      `[loadIntoDatabase] ${source.name}: no TournamentCategory matched for ` +
+        `${missingCategories.size} tier/season key(s); those events have no ` +
+        `points/prize: ${[...missingCategories].join(", ")}`,
+    );
   }
 
   // 3. Rankings.

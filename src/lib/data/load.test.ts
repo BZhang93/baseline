@@ -91,4 +91,23 @@ describe("loadIntoDatabase", () => {
     const arg = tournamentUpsert.mock.calls[0][0];
     expect(arg.where).toEqual({ name_edition: { name: "Test Open", edition: 2026 } });
   });
+
+  it("warns and leaves categoryId null when no category matches", async () => {
+    const { prisma, tournamentUpsert } = fakePrisma();
+    // Source whose tournament tier has no matching category.
+    const orphan: DataSource = {
+      ...source,
+      async tournaments() {
+        const [t] = await source.tournaments();
+        return [{ ...t, tier: "ATP_500" }]; // no ATP_500 category seeded
+      },
+    };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await loadIntoDatabase(prisma, orphan);
+
+    expect(tournamentUpsert.mock.calls[0][0].create.categoryId).toBeNull();
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
+  });
 });
