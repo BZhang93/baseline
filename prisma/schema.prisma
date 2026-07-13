@@ -1,7 +1,8 @@
-// Baseline — Prisma schema
-// Data model detail lands in BRA-34. This file is the minimal, valid
-// Supabase-backed setup so scaffolding (BRA-33) can generate a client and
-// run migrations once the database is connected.
+// Baseline — Prisma schema (BRA-34)
+// Core domain from PRD §8. In the UI-first sequence these live tables are
+// filled by the curated seed (BRA-40) and later by the scraper/rankings
+// (BRA-36/37) behind the same loader interface. Scraper "staging" tables are
+// intentionally deferred to BRA-36, where they're actually used.
 // Docs: https://pris.ly/d/prisma-schema
 
 generator client {
@@ -17,3 +18,288 @@ datasource db {
 //   - Migrations use DIRECT_URL (direct connection, port 5432) via prisma.config.ts.
 //   - The app passes the pooled DATABASE_URL (PgBouncer, port 6543) to PrismaClient
 //     at runtime in src/lib/prisma.ts.
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+/// The circuit / tour level a player filters by (PRD §6.1). Coarser than the
+/// specific tier (see TournamentCategory.tier), which drives points/prize.
+enum Tour {
+  ATP
+  WTA
+  ITF
+  CHALLENGER
+}
+
+enum Surface {
+  HARD
+  CLAY
+  GRASS
+  CARPET
+}
+
+enum BudgetTier {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+/// How a travel leg between two events is made.
+enum TravelMode {
+  FLIGHT
+  GROUND
+}
+
+// ---------------------------------------------------------------------------
+// Reference data: standardized points & prize money per tournament tier
+// (PRD §8 TournamentCategory / §9 category ground-truth). Ground truth the
+// scraper later validates against; for now the seed populates it.
+// ---------------------------------------------------------------------------
+
+model TournamentCategory {
+  id     String @id @default(cuid())
+  tour   Tour
+  /// Specific tier, e.g. "GRAND_SLAM", "MASTERS_1000", "ATP_250",
+  /// "WTA_500", "CHALLENGER_125", "ITF_M25".
+  tier   String
+  season Int
+
+  /// Round key -> ranking points, e.g. {"W":2000,"F":1300,"SF":800}.
+  pointsByRound     Json
+  /// Round key -> prize money (in `currency`).
+  prizeMoneyByRound Json
+  currency          String @default("USD")
+  source            String?
+
+  tournaments Tournament[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tour, tier, season])
+}
+
+// ---------------------------------------------------------------------------
+// Tournaments
+// ---------------------------------------------------------------------------
+
+model Tournament {
+  id          String  @id @default(cuid())
+  name        String
+  tour        Tour
+  /// Matches a TournamentCategory.tier; points/prize are read from the category.
+  tier        String
+  edition     Int // year, e.g. 2026
+
+  city        String
+  country     String
+  countryCode String? // ISO-3166 alpha-2
+  lat         Float?
+  long        Float?
+
+  surface     Surface
+  startDate   DateTime
+  endDate     DateTime
+  drawSize    Int
+  entryDeadline DateTime?
+
+  categoryId  String?
+  category    TournamentCategory? @relation(fields: [categoryId], references: [id])
+
+  cutoff        Cutoff?
+  scheduleItems ScheduleItem[]
+  accommodations Accommodation[]
+  diningInfo     DiningInfo?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Natural key so seed/scraper loads are idempotent (upsert by name + year).
+  @@unique([name, edition])
+  @@index([startDate])
+  @@index([tour, startDate])
+  @@index([surface])
+  @@index([country])
+}
+
+// ---------------------------------------------------------------------------
+// Rankings & cutoffs (deterministic acceptance readout, PRD §6.3.1)
+// ---------------------------------------------------------------------------
+
+/// A row of an official ranking list at a point in time.
+model RankingEntry {
+  id         String   @id @default(cuid())
+  tour       Tour // which list (ATP/WTA/etc.)
+  playerName String
+  rank       Int
+  points     Int
+  asOfDate   DateTime
+
+  createdAt DateTime @default(now())
+
+  @@unique([tour, rank, asOfDate])
+  @@index([tour, asOfDate])
+}
+
+/// The entry cutoff for a tournament edition — both the live (current entry
+/// list) and historical (last year's) views, per PRD §6.3.1.
+model Cutoff {
+  id                    String  @id @default(cuid())
+  tournamentId          String  @unique
+  tournament            Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  liveCutoffRank        Int?
+  liveCutoffPoints      Int?
+  historicalCutoffRank  Int?
+  historicalCutoffPoints Int?
+  source                String?
+  asOfDate              DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Players (app users) — links to the Supabase auth user via `userId`.
+// ---------------------------------------------------------------------------
+
+model Player {
+  id     String @id @default(cuid())
+  /// Supabase auth user id (auth.users.id). One profile per auth user.
+  userId String @unique
+
+  name        String?
+  ranking     Int?
+  rankingTour Tour?
+  nationality String[] // ISO country codes
+
+  homeBaseCity String?
+  homeBaseLat  Float?
+  homeBaseLong Float?
+
+  surfacePrefs Surface[]
+  budgetTier   BudgetTier?
+  dietaryPrefs String[]
+
+  maxDistanceToVenueKm Int?
+  lodgingAmenities     String[]
+
+  schedules Schedule[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Schedules ("legs") — the core object the UI is built around (PRD §5)
+// ---------------------------------------------------------------------------
+
+model Schedule {
+  id       String @id @default(cuid())
+  playerId String
+  player   Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  name      String
+  startDate DateTime?
+  endDate   DateTime?
+
+  // Constraints
+  budgetCap  Int?
+  maxEvents  Int?
+  minRestDays Int?
+
+  // Player-set objective weighting (PRD §7). Default to an even split.
+  weightPoints     Float @default(1)
+  weightMoney      Float @default(1)
+  weightTravelTime Float @default(1)
+  weightTravelCost Float @default(1)
+
+  // Cached blended scores (recomputed as the schedule changes).
+  scorePoints        Int?
+  scorePrizeMoney    Int?
+  scoreTravelTimeMin Int?
+  scoreTravelCost    Int?
+
+  items      ScheduleItem[]
+  travelLegs TravelLeg[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([playerId])
+}
+
+/// A tournament included in a schedule, in play order.
+model ScheduleItem {
+  id           String     @id @default(cuid())
+  scheduleId   String
+  schedule     Schedule   @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id])
+  order        Int
+
+  createdAt DateTime @default(now())
+
+  @@unique([scheduleId, tournamentId])
+  @@index([scheduleId, order])
+}
+
+/// A travel hop between two consecutive events in a schedule.
+model TravelLeg {
+  id         String   @id @default(cuid())
+  scheduleId String
+  schedule   Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  order      Int
+
+  fromLabel String
+  toLabel   String
+  fromLat   Float?
+  fromLong  Float?
+  toLat     Float?
+  toLong    Float?
+
+  mode            TravelMode?
+  durationMinutes Int?
+  costEstimate    Int?
+  date            DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([scheduleId, order])
+}
+
+// ---------------------------------------------------------------------------
+// On-the-ground info (PRD §6.4) — stubs now, populated in Phase 2.
+// ---------------------------------------------------------------------------
+
+model Accommodation {
+  id           String     @id @default(cuid())
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  name              String
+  distanceToVenueKm Float?
+  pricePerNight     Int?
+  currency          String   @default("USD")
+  amenities         String[]
+  bookingUrl        String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tournamentId])
+}
+
+model DiningInfo {
+  id           String     @id @default(cuid())
+  tournamentId String     @unique
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  country           String
+  deliveryAvailable Boolean?
+  nearbyChains      String[]
+  dietaryTags       String[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
