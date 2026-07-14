@@ -8,19 +8,6 @@ import { formatSurface, capitalize } from "@/lib/format";
 import type { ProfileInput } from "@/lib/profile";
 import { updateProfileAction } from "../actions";
 
-export interface ProfileFormValues {
-  name: string | null;
-  ranking: number | null;
-  rankingTour: Tour | null;
-  nationality: string[];
-  homeBaseCity: string | null;
-  surfacePrefs: Surface[];
-  budgetTier: BudgetTier | null;
-  dietaryPrefs: string[];
-  maxDistanceToVenueKm: number | null;
-  lodgingAmenities: string[];
-}
-
 function csv(values: string[]): string {
   return values.join(", ");
 }
@@ -38,7 +25,7 @@ function numberOrNull(v: string): number | null {
 
 const RANKING_TOURS = [Tour.ATP, Tour.WTA] as const;
 
-export function ProfileForm({ initial }: { initial: ProfileFormValues }) {
+export function ProfileForm({ initial }: { initial: ProfileInput }) {
   const [name, setName] = useState(initial.name ?? "");
   const [ranking, setRanking] = useState(initial.ranking?.toString() ?? "");
   const [rankingTour, setRankingTour] = useState<string>(initial.rankingTour ?? "");
