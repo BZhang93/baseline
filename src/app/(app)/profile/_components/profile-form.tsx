@@ -32,7 +32,13 @@ const SURFACE_OPTIONS = Object.values(Surface).filter((s) => s !== Surface.CARPE
 
 const distanceUnit = (u: UnitSystem) => (u === UnitSystem.IMPERIAL ? "mi" : "km");
 
-export function ProfileForm({ initial }: { initial: ProfileInput }) {
+export function ProfileForm({
+  initial,
+  email,
+}: {
+  initial: ProfileInput;
+  email: string | null;
+}) {
   const [name, setName] = useState(initial.name ?? "");
   const [ranking, setRanking] = useState(initial.ranking?.toString() ?? "");
   const [circuit, setCircuit] = useState<Circuit | "">(initial.circuit ?? "");
@@ -132,10 +138,25 @@ export function ProfileForm({ initial }: { initial: ProfileInput }) {
 
   return (
     <div className="mt-6 flex max-w-xl flex-col gap-4">
-      <label className={label}>
-        Name
-        <input value={name} onChange={(e) => setName(e.target.value)} className={field} />
-      </label>
+      <div className="grid grid-cols-2 gap-3">
+        <label className={label}>
+          Name
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className={field}
+          />
+        </label>
+        <label className={label}>
+          Email
+          <input
+            value={email ?? ""}
+            readOnly
+            disabled
+            className={`${field} bg-gray-50 text-gray-500`}
+          />
+        </label>
+      </div>
 
       <div className="grid grid-cols-2 gap-3">
         <label className={label}>
