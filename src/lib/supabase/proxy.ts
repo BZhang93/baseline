@@ -38,7 +38,10 @@ export async function updateSession(request: NextRequest) {
   // are redirected to /login. Public routes (home, login, auth callback) pass
   // through.
   const { pathname } = request.nextUrl;
-  const isProtected = pathname.startsWith("/dashboard");
+  const protectedPrefixes = ["/schedules", "/browse", "/profile"];
+  const isProtected = protectedPrefixes.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`),
+  );
   if (!user && isProtected) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";

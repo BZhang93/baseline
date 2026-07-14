@@ -23,7 +23,7 @@ export async function login(formData: FormData): Promise<AuthResult | void> {
 
   // Clear cached, user-specific content across the auth-state change.
   revalidatePath("/", "layout");
-  redirect("/dashboard");
+  redirect("/schedules");
 }
 
 export async function signup(formData: FormData): Promise<AuthResult | void> {
@@ -39,14 +39,14 @@ export async function signup(formData: FormData): Promise<AuthResult | void> {
 
   // When email confirmation is enabled (Supabase's default), signUp succeeds
   // but returns no session — the user must confirm via email before they can
-  // sign in. Tell them, rather than redirecting into /dashboard, which the
+  // sign in. Tell them, rather than redirecting into an authed route, which the
   // proxy would just bounce back to /login with no explanation.
   if (!data.session) {
     return { status: "confirm-email" };
   }
 
   revalidatePath("/", "layout");
-  redirect("/dashboard");
+  redirect("/schedules");
 }
 
 export async function logout(): Promise<void> {
