@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import type { TournamentView } from "@/lib/tournaments";
 import { formatDateRange, formatMoney, formatSurface } from "@/lib/format";
+import { lodgingSearchUrl } from "@/lib/booking-links";
 import { GapBadge } from "../../_components/gap-badge";
 
 function EventCard({
@@ -61,6 +62,17 @@ function EventCard({
           <div className="text-gray-500">Last Year</div>
           <div>{t.historicalCutoff.rank != null ? `#${t.historicalCutoff.rank}` : "—"}</div>
         </div>
+      </div>
+
+      <div className="mt-3">
+        <a
+          href={lodgingSearchUrl(t.city, t.country, t.startDate)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
+        >
+          Find stays ↗
+        </a>
       </div>
     </li>
   );

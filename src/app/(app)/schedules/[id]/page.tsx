@@ -7,9 +7,13 @@ import {
   type TravelLegView,
 } from "@/lib/schedules";
 import { formatDateRange, formatMoney, formatSurface, formatTravelTime } from "@/lib/format";
+import { flightSearchUrl, lodgingSearchUrl } from "@/lib/booking-links";
 import { GapBadge } from "../../_components/gap-badge";
 import { RenameName } from "../_components/rename-name";
 import { removeEventAction, deleteScheduleAction } from "../actions";
+
+const externalLink =
+  "rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50";
 
 function EventRow({
   scheduleId,
@@ -73,13 +77,23 @@ function EventRow({
           </div>
         </div>
       </div>
+      <div className="mt-3">
+        <a
+          href={lodgingSearchUrl(e.city, e.country, e.startDate)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={externalLink}
+        >
+          Find stays ↗
+        </a>
+      </div>
     </div>
   );
 }
 
 function LegRow({ leg }: { leg: TravelLegView }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-2 text-sm text-gray-500">
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-500">
       <span>✈</span>
       <span>
         {leg.fromLabel} → {leg.toLabel}
@@ -88,6 +102,14 @@ function LegRow({ leg }: { leg: TravelLegView }) {
       <span>{formatTravelTime(leg.durationMinutes)}</span>
       <span>·</span>
       <span>{formatMoney(leg.costEstimate)}</span>
+      <a
+        href={flightSearchUrl(leg.fromLabel, leg.toLabel)}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`${externalLink} ml-1`}
+      >
+        Book flight ↗
+      </a>
     </div>
   );
 }
