@@ -1,10 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-// Import enums from the client-safe generated entry (not "/client", which pulls
-// server-only runtime into the browser bundle).
-import { Tour, Surface, BudgetTier } from "@/generated/prisma/enums";
-import { formatSurface, capitalize } from "@/lib/format";
+import { Tour, Surface, BudgetTier, UnitSystem } from "@/generated/prisma/enums";
+import { capitalize, kmToMi, miToKm } from "@/lib/format";
 import type { ProfileInput } from "@/lib/profile";
 import { updateProfileAction } from "../actions";
 
@@ -23,7 +21,17 @@ function numberOrNull(v: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-const RANKING_TOURS = [Tour.ATP, Tour.WTA] as const;
+// The gendered tour options: choosing a gender selects the corresponding
+// ranking tour (Men → ATP, Women → WTA).
+const TOUR_OPTIONS: { value: Tour; label: string }[] = [
+  { value: Tour.ATP, label: "Men's (ATP)" },
+  { value: Tour.WTA, label: "Women's (WTA)" },
+];
+
+// Carpet is excluded — no current events use it.
+const SURFACE_OPTIONS = Object.values(Surface).filter((s) => s !== Surface.CARPET);
+
+const distanceUnit = (u: UnitSystem) => (u === UnitSystem.IMPERIAL ? "mi" : "km");
 
 export function ProfileForm({ initial }: { initial: ProfileInput }) {
   const [name, setName] = useState(initial.name ?? "");
@@ -31,12 +39,20 @@ export function ProfileForm({ initial }: { initial: ProfileInput }) {
   const [rankingTour, setRankingTour] = useState<string>(initial.rankingTour ?? "");
   const [nationality, setNationality] = useState(csv(initial.nationality));
   const [homeBaseCity, setHomeBaseCity] = useState(initial.homeBaseCity ?? "");
+  const [homeBaseCountry, setHomeBaseCountry] = useState(initial.homeBaseCountry ?? "");
   const [surfacePrefs, setSurfacePrefs] = useState<Surface[]>(initial.surfacePrefs);
   const [budgetTier, setBudgetTier] = useState<string>(initial.budgetTier ?? "");
+  const [unitSystem, setUnitSystem] = useState<UnitSystem>(initial.unitSystem);
   const [dietaryPrefs, setDietaryPrefs] = useState(csv(initial.dietaryPrefs));
-  const [maxDistance, setMaxDistance] = useState(
-    initial.maxDistanceToVenueKm?.toString() ?? "",
-  );
+  // Displayed in the player's current unit; converted to km on save.
+  const [maxDistance, setMaxDistance] = useState(() => {
+    if (initial.maxDistanceToVenueKm == null) return "";
+    const v =
+      initial.unitSystem === UnitSystem.IMPERIAL
+        ? Math.round(kmToMi(initial.maxDistanceToVenueKm))
+        : initial.maxDistanceToVenueKm;
+    return v.toString();
+  });
   const [lodgingAmenities, setLodgingAmenities] = useState(csv(initial.lodgingAmenities));
 
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +65,26 @@ export function ProfileForm({ initial }: { initial: ProfileInput }) {
     );
   }
 
+  // Switching units converts the current max-distance value once, so the number
+  // keeps meaning the same real-world distance.
+  function changeUnit(next: UnitSystem) {
+    if (next !== unitSystem && maxDistance.trim() !== "") {
+      const n = Number(maxDistance);
+      if (Number.isFinite(n)) {
+        const km = unitSystem === UnitSystem.IMPERIAL ? miToKm(n) : n;
+        const converted = next === UnitSystem.IMPERIAL ? kmToMi(km) : km;
+        setMaxDistance(String(Math.round(converted)));
+      }
+    }
+    setUnitSystem(next);
+  }
+
+  function maxDistanceKm(): number | null {
+    const n = numberOrNull(maxDistance);
+    if (n == null) return null;
+    return unitSystem === UnitSystem.IMPERIAL ? Math.round(miToKm(n)) : n;
+  }
+
   function save() {
     setError(null);
     setSaved(false);
@@ -58,10 +94,12 @@ export function ProfileForm({ initial }: { initial: ProfileInput }) {
       rankingTour: (rankingTour || null) as Tour | null,
       nationality: parseCsv(nationality),
       homeBaseCity: homeBaseCity.trim() || null,
+      homeBaseCountry: homeBaseCountry.trim() || null,
       surfacePrefs,
       budgetTier: (budgetTier || null) as BudgetTier | null,
+      unitSystem,
       dietaryPrefs: parseCsv(dietaryPrefs),
-      maxDistanceToVenueKm: numberOrNull(maxDistance),
+      maxDistanceToVenueKm: maxDistanceKm(),
       lodgingAmenities: parseCsv(lodgingAmenities),
     };
     startTransition(async () => {
@@ -93,56 +131,65 @@ export function ProfileForm({ initial }: { initial: ProfileInput }) {
           />
         </label>
         <label className={label}>
-          Ranking Tour
+          Tour
           <select
             value={rankingTour}
             onChange={(e) => setRankingTour(e.target.value)}
             className={field}
           >
-            <option value="">—</option>
-            {RANKING_TOURS.map((t) => (
-              <option key={t} value={t}>
-                {t}
+            <option value="">Select men&apos;s or women&apos;s</option>
+            {TOUR_OPTIONS.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
               </option>
             ))}
           </select>
         </label>
       </div>
       <p className="-mt-2 text-xs text-gray-500">
-        Set your ranking + tour to see how far you are from each event&apos;s cutoff on Browse.
+        Set your ranking and tour to see how far you are from each event&apos;s
+        cutoff on Browse.
       </p>
 
-      <div className="grid grid-cols-2 gap-3">
-        <label className={label}>
-          Home Base City
+      <fieldset className={label}>
+        <span>Home Base</span>
+        <div className="grid grid-cols-2 gap-3">
           <input
             value={homeBaseCity}
             onChange={(e) => setHomeBaseCity(e.target.value)}
+            placeholder="City"
             className={field}
           />
-        </label>
-        <label className={label}>
-          Nationality
           <input
-            value={nationality}
-            onChange={(e) => setNationality(e.target.value)}
-            placeholder="HR, US"
+            value={homeBaseCountry}
+            onChange={(e) => setHomeBaseCountry(e.target.value)}
+            placeholder="Country"
             className={field}
           />
-        </label>
-      </div>
+        </div>
+      </fieldset>
+
+      <label className={label}>
+        Nationality
+        <input
+          value={nationality}
+          onChange={(e) => setNationality(e.target.value)}
+          placeholder="HR, US"
+          className={field}
+        />
+      </label>
 
       <fieldset className={label}>
         <span>Surface Preferences</span>
         <div className="flex flex-wrap gap-3">
-          {Object.values(Surface).map((s) => (
+          {SURFACE_OPTIONS.map((s) => (
             <label key={s} className="flex items-center gap-1.5 text-sm">
               <input
                 type="checkbox"
                 checked={surfacePrefs.includes(s)}
                 onChange={() => toggleSurface(s)}
               />
-              {formatSurface(s)}
+              {capitalize(s)}
             </label>
           ))}
         </div>
@@ -165,16 +212,28 @@ export function ProfileForm({ initial }: { initial: ProfileInput }) {
           </select>
         </label>
         <label className={label}>
-          Max Distance to Venue (km)
-          <input
-            type="number"
-            min={0}
-            value={maxDistance}
-            onChange={(e) => setMaxDistance(e.target.value)}
+          Units
+          <select
+            value={unitSystem}
+            onChange={(e) => changeUnit(e.target.value as UnitSystem)}
             className={field}
-          />
+          >
+            <option value={UnitSystem.METRIC}>Metric (km)</option>
+            <option value={UnitSystem.IMPERIAL}>Imperial (mi)</option>
+          </select>
         </label>
       </div>
+
+      <label className={label}>
+        Max Distance to Venue ({distanceUnit(unitSystem)})
+        <input
+          type="number"
+          min={0}
+          value={maxDistance}
+          onChange={(e) => setMaxDistance(e.target.value)}
+          className={field}
+        />
+      </label>
 
       <label className={label}>
         Dietary Preferences

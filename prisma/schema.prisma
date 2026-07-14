@@ -45,6 +45,11 @@ enum BudgetTier {
   HIGH
 }
 
+enum UnitSystem {
+  METRIC
+  IMPERIAL
+}
+
 /// How a travel leg between two events is made.
 enum TravelMode {
   FLIGHT
@@ -174,14 +179,19 @@ model Player {
   rankingTour Tour?
   nationality String[] // ISO country codes
 
-  homeBaseCity String?
-  homeBaseLat  Float?
-  homeBaseLong Float?
+  homeBaseCity    String?
+  homeBaseCountry String?
+  homeBaseLat     Float?
+  homeBaseLong    Float?
 
   surfacePrefs Surface[]
   budgetTier   BudgetTier?
   dietaryPrefs String[]
 
+  unitSystem UnitSystem @default(METRIC)
+
+  // Always stored in km; the UI converts for display when the player uses
+  // imperial units.
   maxDistanceToVenueKm Int?
   lodgingAmenities     String[]
 

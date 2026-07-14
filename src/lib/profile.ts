@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { Tour, Surface, BudgetTier } from "@/generated/prisma/client";
+import { Tour, Surface, BudgetTier, UnitSystem } from "@/generated/prisma/client";
 
 export interface ProfileInput {
   name: string | null;
@@ -7,8 +7,10 @@ export interface ProfileInput {
   rankingTour: Tour | null;
   nationality: string[];
   homeBaseCity: string | null;
+  homeBaseCountry: string | null;
   surfacePrefs: Surface[];
   budgetTier: BudgetTier | null;
+  unitSystem: UnitSystem;
   dietaryPrefs: string[];
   maxDistanceToVenueKm: number | null;
   lodgingAmenities: string[];
@@ -16,6 +18,7 @@ export interface ProfileInput {
 
 const SURFACES = Object.values(Surface) as string[];
 const BUDGET_TIERS = Object.values(BudgetTier) as string[];
+const UNIT_SYSTEMS = Object.values(UnitSystem) as string[];
 
 // Validates a profile; returns an error message, or null if valid.
 export function validateProfile(input: ProfileInput): string | null {
@@ -33,6 +36,9 @@ export function validateProfile(input: ProfileInput): string | null {
   }
   if (input.budgetTier != null && !BUDGET_TIERS.includes(input.budgetTier)) {
     return "Unknown budget tier.";
+  }
+  if (!UNIT_SYSTEMS.includes(input.unitSystem)) {
+    return "Unknown measurement system.";
   }
   if (input.maxDistanceToVenueKm != null && input.maxDistanceToVenueKm < 0) {
     return "Max distance can't be negative.";
@@ -52,8 +58,10 @@ export async function updatePlayerProfile(
       rankingTour: input.rankingTour,
       nationality: input.nationality,
       homeBaseCity: input.homeBaseCity,
+      homeBaseCountry: input.homeBaseCountry,
       surfacePrefs: input.surfacePrefs,
       budgetTier: input.budgetTier,
+      unitSystem: input.unitSystem,
       dietaryPrefs: input.dietaryPrefs,
       maxDistanceToVenueKm: input.maxDistanceToVenueKm,
       lodgingAmenities: input.lodgingAmenities,

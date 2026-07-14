@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { validateProfile, type ProfileInput } from "./profile";
-import { Tour, Surface, BudgetTier } from "@/generated/prisma/client";
+import { Tour, Surface, BudgetTier, UnitSystem } from "@/generated/prisma/client";
 
 const base: ProfileInput = {
   name: "Maya",
@@ -8,8 +8,10 @@ const base: ProfileInput = {
   rankingTour: Tour.WTA,
   nationality: ["HR"],
   homeBaseCity: "Zagreb",
+  homeBaseCountry: "Croatia",
   surfacePrefs: [Surface.CLAY],
   budgetTier: BudgetTier.LOW,
+  unitSystem: UnitSystem.METRIC,
   dietaryPrefs: ["gluten-free"],
   maxDistanceToVenueKm: 15,
   lodgingAmenities: ["kitchen"],
@@ -28,8 +30,10 @@ describe("validateProfile", () => {
         rankingTour: null,
         nationality: [],
         homeBaseCity: null,
+        homeBaseCountry: null,
         surfacePrefs: [],
         budgetTier: null,
+        unitSystem: UnitSystem.IMPERIAL,
         dietaryPrefs: [],
         maxDistanceToVenueKm: null,
         lodgingAmenities: [],
