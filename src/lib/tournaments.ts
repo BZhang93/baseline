@@ -62,6 +62,22 @@ export interface BrowseFilters {
   country?: string;
 }
 
+// Resolves the Browse date window from the raw `from`/`to` search params.
+// An absent param falls back to the default window — today through the end of
+// the current year — so a fresh visit (and Clear) lands on it. An explicitly
+// empty param (the user cleared the field) means "no bound".
+export function resolveBrowseDates(
+  rawFrom: string | undefined,
+  rawTo: string | undefined,
+  now: Date,
+): { from?: string; to?: string } {
+  const today = now.toISOString().slice(0, 10);
+  const yearEnd = `${now.getUTCFullYear()}-12-31`;
+  const pick = (raw: string | undefined, fallback: string): string | undefined =>
+    raw === undefined ? fallback : raw.length > 0 ? raw : undefined;
+  return { from: pick(rawFrom, today), to: pick(rawTo, yearEnd) };
+}
+
 export interface TournamentView {
   id: string;
   name: string;
@@ -118,12 +134,10 @@ export async function getBrowseData(
   else if (filters.tours && filters.tours.length > 0) where.tour = { in: filters.tours };
   if (filters.surface) where.surface = filters.surface;
   if (filters.country) where.country = filters.country;
-  if (filters.from || filters.to) {
-    where.startDate = {
-      ...(filters.from ? { gte: new Date(filters.from) } : {}),
-      ...(filters.to ? { lte: new Date(filters.to) } : {}),
-    };
-  }
+  // Match tournaments that OVERLAP the [from, to] window, not just those whose
+  // start falls inside it — so an event already in progress today still shows.
+  if (filters.from) where.endDate = { gte: new Date(filters.from) };
+  if (filters.to) where.startDate = { lte: new Date(filters.to) };
   if (filters.q) {
     const contains = { contains: filters.q, mode: Prisma.QueryMode.insensitive };
     where.OR = [{ name: contains }, { city: contains }, { country: contains }];

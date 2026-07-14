@@ -86,8 +86,20 @@ describe("resolveBrowseTours", () => {
     expect(r.tours).toEqual([Tour.ATP, Tour.CHALLENGER, Tour.ITF]);
   });
 
-  it("does not auto-default once the user has chosen a tour this visit", () => {
-    // "All tours" explicitly picked: tourExplicit=true, selectedTour=undefined.
+  it("explicit All tours widens to the whole circuit (escape hatch)", () => {
+    // A Challenger-only player picks "All tours" — they should see every
+    // men's event, not just Challenger.
+    const r = resolveBrowseTours({
+      circuit: Circuit.MENS,
+      playerTours: [Tour.CHALLENGER],
+      selectedTour: undefined,
+      tourExplicit: true,
+    });
+    expect(r.tour).toBeUndefined();
+    expect(r.tours).toEqual([Tour.ATP, Tour.CHALLENGER, Tour.ITF]);
+  });
+
+  it("explicit All tours ignores the saved subset for multi-tour players too", () => {
     const r = resolveBrowseTours({
       circuit: Circuit.MENS,
       playerTours: [Tour.ATP, Tour.CHALLENGER],
@@ -95,7 +107,7 @@ describe("resolveBrowseTours", () => {
       tourExplicit: true,
     });
     expect(r.tour).toBeUndefined();
-    expect(r.tours).toEqual([Tour.ATP, Tour.CHALLENGER]);
+    expect(r.tours).toEqual([Tour.ATP, Tour.CHALLENGER, Tour.ITF]);
   });
 
   it("honors an explicit in-circuit selection", () => {

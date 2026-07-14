@@ -1,6 +1,40 @@
 import { describe, it, expect } from "vitest";
-import { computeGap, rankingTourFor, buildRankingLookup } from "./tournaments";
+import {
+  computeGap,
+  rankingTourFor,
+  buildRankingLookup,
+  resolveBrowseDates,
+} from "./tournaments";
 import { Tour } from "@/generated/prisma/client";
+
+describe("resolveBrowseDates", () => {
+  const now = new Date("2026-07-14T09:00:00Z");
+
+  it("defaults an absent window to today → year end", () => {
+    expect(resolveBrowseDates(undefined, undefined, now)).toEqual({
+      from: "2026-07-14",
+      to: "2026-12-31",
+    });
+  });
+
+  it("keeps explicitly provided dates", () => {
+    expect(resolveBrowseDates("2026-08-01", "2026-09-15", now)).toEqual({
+      from: "2026-08-01",
+      to: "2026-09-15",
+    });
+  });
+
+  it("treats a cleared (empty) field as no bound", () => {
+    expect(resolveBrowseDates("", "", now)).toEqual({ from: undefined, to: undefined });
+  });
+
+  it("defaults each side independently", () => {
+    expect(resolveBrowseDates("2026-08-01", undefined, now)).toEqual({
+      from: "2026-08-01",
+      to: "2026-12-31",
+    });
+  });
+});
 
 describe("computeGap", () => {
   it("is 'in' when the player's rank is at or above the cutoff", () => {
