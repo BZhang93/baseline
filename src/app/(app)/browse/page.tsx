@@ -16,13 +16,18 @@ function str(v: string | string[] | undefined): string | undefined {
   return s && s.length > 0 ? s : undefined;
 }
 
+const TOURS = Object.values(Tour) as string[];
+const SURFACES = Object.values(Surface) as string[];
+
 function parseFilters(sp: SearchParams): BrowseFilters {
   const tour = str(sp.tour);
   const surface = str(sp.surface);
   return {
     q: str(sp.q),
-    tour: tour && tour in Tour ? (tour as Tour) : undefined,
-    surface: surface && surface in Surface ? (surface as Surface) : undefined,
+    // Validate against the enum's values (not `in`, which would also match
+    // prototype keys like "toString"/"constructor").
+    tour: tour && TOURS.includes(tour) ? (tour as Tour) : undefined,
+    surface: surface && SURFACES.includes(surface) ? (surface as Surface) : undefined,
     from: str(sp.from),
     to: str(sp.to),
     country: str(sp.country),
