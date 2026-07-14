@@ -21,6 +21,7 @@ import { toursForCircuit } from "@/lib/circuit";
 import { CURRENCIES } from "@/lib/currency";
 import type { ProfileInput } from "@/lib/profile";
 import { updateProfileAction } from "../actions";
+import { RankedList } from "./ranked-list";
 
 function csv(values: string[]): string {
   return values.join(", ");
@@ -108,28 +109,6 @@ export function ProfileForm({
   }
 
   const tourOptions = circuit === "" ? [] : toursForCircuit(circuit);
-
-  function addTransport(m: TransportMode) {
-    setTransportModes((prev) => (prev.includes(m) ? prev : [...prev, m]));
-  }
-  function removeTransport(m: TransportMode) {
-    setTransportModes((prev) => prev.filter((x) => x !== m));
-  }
-  function moveTransport(index: number, dir: -1 | 1) {
-    setTransportModes((prev) => {
-      const next = [...prev];
-      const target = index + dir;
-      if (target < 0 || target >= next.length) return prev;
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
-  }
-  function toggleLodging(t: LodgingType) {
-    setLodgingTypes((prev) =>
-      prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t],
-    );
-  }
-  const availableTransport = ALL_TRANSPORT.filter((m) => !transportModes.includes(m));
 
   // Switching units converts the current max-distance value once, so the number
   // keeps meaning the same real-world distance.
@@ -360,83 +339,28 @@ export function ProfileForm({
         <h2 className="text-sm font-medium">Travel &amp; Lodging</h2>
 
         {/* Transport modes — ranked */}
-        <fieldset className={`${label} mt-3`}>
-          <span>Transport modes, in order of preference</span>
-          {transportModes.length === 0 ? (
-            <p className="mt-1 text-xs text-gray-500">Add the modes you&apos;ll take.</p>
-          ) : (
-            <ol className="mt-1 flex flex-col gap-2">
-              {transportModes.map((m, i) => (
-                <li
-                  key={m}
-                  className="flex items-center justify-between rounded border border-gray-200 px-3 py-1.5 text-sm"
-                >
-                  <span>
-                    <span className="text-gray-400">{i + 1}.</span> {formatTransportMode(m)}
-                  </span>
-                  <span className="flex items-center gap-2 text-gray-500">
-                    <button
-                      type="button"
-                      onClick={() => moveTransport(i, -1)}
-                      disabled={i === 0}
-                      aria-label="Move up"
-                      className="disabled:opacity-30"
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => moveTransport(i, 1)}
-                      disabled={i === transportModes.length - 1}
-                      aria-label="Move down"
-                      className="disabled:opacity-30"
-                    >
-                      ↓
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => removeTransport(m)}
-                      className="text-xs hover:text-red-600"
-                    >
-                      Remove
-                    </button>
-                  </span>
-                </li>
-              ))}
-            </ol>
-          )}
-          {availableTransport.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-2">
-              {availableTransport.map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => addTransport(m)}
-                  className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
-                >
-                  + {formatTransportMode(m)}
-                </button>
-              ))}
-            </div>
-          )}
-        </fieldset>
+        <div className="mt-3">
+          <RankedList
+            label="Transport modes, in order of preference"
+            hint="Add the modes you'll take."
+            options={ALL_TRANSPORT}
+            selected={transportModes}
+            format={formatTransportMode}
+            onChange={setTransportModes}
+          />
+        </div>
 
-        {/* Lodging types */}
-        <fieldset className={`${label} mt-4`}>
-          <span>Lodging types</span>
-          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-2">
-            {ALL_LODGING.map((t) => (
-              <label key={t} className="flex items-center gap-1.5 text-sm">
-                <input
-                  type="checkbox"
-                  checked={lodgingTypes.includes(t)}
-                  onChange={() => toggleLodging(t)}
-                />
-                {formatLodgingType(t)}
-              </label>
-            ))}
-          </div>
-        </fieldset>
+        {/* Lodging types — ranked */}
+        <div className="mt-4">
+          <RankedList
+            label="Lodging types, in order of preference"
+            hint="Add the stays you'd consider."
+            options={ALL_LODGING}
+            selected={lodgingTypes}
+            format={formatLodgingType}
+            onChange={setLodgingTypes}
+          />
+        </div>
 
         {/* Spend sliders */}
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
