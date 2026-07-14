@@ -40,7 +40,10 @@ export function ProfileForm({ initial }: { initial: ProfileInput }) {
   const [nationality, setNationality] = useState(csv(initial.nationality));
   const [homeBaseCity, setHomeBaseCity] = useState(initial.homeBaseCity ?? "");
   const [homeBaseCountry, setHomeBaseCountry] = useState(initial.homeBaseCountry ?? "");
-  const [surfacePrefs, setSurfacePrefs] = useState<Surface[]>(initial.surfacePrefs);
+  const [surfacePrefs, setSurfacePrefs] = useState<Surface[]>(
+    // Drop any legacy Carpet pref so it can be removed on the next save.
+    initial.surfacePrefs.filter((s) => s !== Surface.CARPET),
+  );
   const [budgetTier, setBudgetTier] = useState<string>(initial.budgetTier ?? "");
   const [unitSystem, setUnitSystem] = useState<UnitSystem>(initial.unitSystem);
   const [dietaryPrefs, setDietaryPrefs] = useState(csv(initial.dietaryPrefs));
@@ -82,7 +85,8 @@ export function ProfileForm({ initial }: { initial: ProfileInput }) {
   function maxDistanceKm(): number | null {
     const n = numberOrNull(maxDistance);
     if (n == null) return null;
-    return unitSystem === UnitSystem.IMPERIAL ? Math.round(miToKm(n)) : n;
+    // Stored as an integer number of km.
+    return Math.round(unitSystem === UnitSystem.IMPERIAL ? miToKm(n) : n);
   }
 
   function save() {
