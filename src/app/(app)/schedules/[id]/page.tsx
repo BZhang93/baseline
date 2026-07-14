@@ -19,7 +19,7 @@ function EventRow({
   e: ScheduleEventView;
 }) {
   return (
-    <li className="rounded-lg border border-gray-200 p-4">
+    <div className="rounded-lg border border-gray-200 p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="font-medium">{e.name}</h3>
@@ -73,13 +73,13 @@ function EventRow({
           </div>
         </div>
       </div>
-    </li>
+    </div>
   );
 }
 
 function LegRow({ leg }: { leg: TravelLegView }) {
   return (
-    <li className="flex flex-wrap items-center gap-x-2 text-sm text-gray-500">
+    <div className="flex flex-wrap items-center gap-x-2 text-sm text-gray-500">
       <span>✈</span>
       <span>
         {leg.fromLabel} → {leg.toLabel}
@@ -88,7 +88,7 @@ function LegRow({ leg }: { leg: TravelLegView }) {
       <span>{formatTravelTime(leg.durationMinutes)}</span>
       <span>·</span>
       <span>{formatMoney(leg.costEstimate)}</span>
-    </li>
+    </div>
   );
 }
 
@@ -160,10 +160,10 @@ export default async function ScheduleDetailPage({
       ) : (
         <ol className="mt-6 flex flex-col gap-4">
           {schedule.events.map((e, i) => (
-            <div key={e.tournamentId} className="flex flex-col gap-3">
+            <li key={e.tournamentId} className="flex flex-col gap-3">
               <EventRow scheduleId={schedule.id} e={e} />
               {schedule.legs[i] && <LegRow leg={schedule.legs[i]} />}
-            </div>
+            </li>
           ))}
         </ol>
       )}
