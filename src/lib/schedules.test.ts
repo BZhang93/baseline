@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { haversineKm, estimateTravel, buildLegsAndScores, type LegEvent } from "./schedules";
+import {
+  haversineKm,
+  estimateTravel,
+  buildLegsAndScores,
+  parseEventIdsParam,
+  type LegEvent,
+} from "./schedules";
 
 function ev(
   startDate: string,
@@ -85,5 +91,26 @@ describe("buildLegsAndScores", () => {
     expect(built.legs[0].durationMinutes).toBeNull();
     expect(built.legs[0].costEstimate).toBeNull();
     expect(built.scoreTravelCost).toBe(0);
+  });
+});
+
+describe("parseEventIdsParam", () => {
+  const valid = ["a", "b", "c"];
+
+  it("returns [] for an empty/missing param", () => {
+    expect(parseEventIdsParam(undefined, valid)).toEqual([]);
+    expect(parseEventIdsParam("", valid)).toEqual([]);
+  });
+
+  it("keeps only valid ids, preserving order", () => {
+    expect(parseEventIdsParam("b,a", valid)).toEqual(["b", "a"]);
+  });
+
+  it("ignores unknown ids and blanks", () => {
+    expect(parseEventIdsParam("a, ,zzz,c", valid)).toEqual(["a", "c"]);
+  });
+
+  it("de-duplicates", () => {
+    expect(parseEventIdsParam("a,a,b", valid)).toEqual(["a", "b"]);
   });
 });

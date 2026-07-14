@@ -22,7 +22,13 @@ function numberOrUndefined(v: string): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
-export function CreateScheduleForm({ tournaments }: { tournaments: PickerTournament[] }) {
+export function CreateScheduleForm({
+  tournaments,
+  initialSelectedIds = [],
+}: {
+  tournaments: PickerTournament[];
+  initialSelectedIds?: string[];
+}) {
   const [name, setName] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -30,7 +36,7 @@ export function CreateScheduleForm({ tournaments }: { tournaments: PickerTournam
   const [maxEvents, setMaxEvents] = useState("");
   const [minRestDays, setMinRestDays] = useState("");
   const [priority, setPriority] = useState(50);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>(initialSelectedIds);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 

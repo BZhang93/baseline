@@ -4,11 +4,10 @@ import {
   getBrowseData,
   getFilterOptions,
   type BrowseFilters,
-  type TournamentView,
 } from "@/lib/tournaments";
 import { Tour, Surface } from "@/generated/prisma/client";
-import { formatDateRange, formatMoney, formatSurface } from "@/lib/format";
-import { GapBadge } from "../_components/gap-badge";
+import { formatSurface } from "@/lib/format";
+import { BrowseResults } from "./_components/browse-results";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -33,53 +32,6 @@ function parseFilters(sp: SearchParams): BrowseFilters {
     to: str(sp.to),
     country: str(sp.country),
   };
-}
-
-function EventCard({ t }: { t: TournamentView }) {
-  return (
-    <li className="rounded-lg border border-gray-200 p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="font-medium">{t.name}</h3>
-          <p className="text-sm text-gray-500">
-            {t.city}, {t.country} · {formatDateRange(t.startDate, t.endDate)}
-          </p>
-        </div>
-        <GapBadge gap={t.gap} />
-      </div>
-
-      <div className="mt-3 flex flex-wrap gap-2 text-xs">
-        <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">{t.tour}</span>
-        <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">{t.tier.replaceAll("_", " ")}</span>
-        <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">
-          {formatSurface(t.surface)}
-        </span>
-        <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">Draw {t.drawSize}</span>
-      </div>
-
-      <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">
-        <div>
-          <div className="text-gray-500">Winner</div>
-          <div>{t.winnerPoints != null ? `${t.winnerPoints} pts` : "—"}</div>
-        </div>
-        <div>
-          <div className="text-gray-500">Prize (W)</div>
-          <div>{formatMoney(t.winnerPrize, t.currency ?? undefined)}</div>
-        </div>
-        <div>
-          <div className="text-gray-500">Live cutoff</div>
-          <div>
-            {t.liveCutoff.rank != null ? `#${t.liveCutoff.rank}` : "—"}
-            {t.liveCutoff.points != null ? ` · ${t.liveCutoff.points} pts` : ""}
-          </div>
-        </div>
-        <div>
-          <div className="text-gray-500">Last year</div>
-          <div>{t.historicalCutoff.rank != null ? `#${t.historicalCutoff.rank}` : "—"}</div>
-        </div>
-      </div>
-    </li>
-  );
 }
 
 export default async function BrowsePage({
@@ -151,15 +103,7 @@ export default async function BrowsePage({
         </p>
       )}
 
-      {tournaments.length === 0 ? (
-        <p className="mt-8 text-gray-500">No tournaments match these filters.</p>
-      ) : (
-        <ul className="mt-4 grid gap-3">
-          {tournaments.map((t) => (
-            <EventCard key={t.id} t={t} />
-          ))}
-        </ul>
-      )}
+      <BrowseResults tournaments={tournaments} />
     </div>
   );
 }
