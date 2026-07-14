@@ -12,12 +12,9 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* The app is styled light-mode-first. Until we add proper dark-mode variants,
+   render light regardless of the OS preference so components (light cards,
+   gray pills, gray borders) stay readable. */
 
 body {
   background: var(--background);
