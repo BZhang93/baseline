@@ -33,6 +33,8 @@ export function formatTravelTime(minutes: number | null): string {
 }
 
 // "CLAY" -> "Clay"
-export function formatSurface(surface: string): string {
-  return surface.charAt(0) + surface.slice(1).toLowerCase();
+export function capitalize(word: string): string {
+  return word.charAt(0) + word.slice(1).toLowerCase();
 }
+
+export const formatSurface = capitalize;
