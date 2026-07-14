@@ -38,3 +38,13 @@ export function capitalize(word: string): string {
 }
 
 export const formatSurface = capitalize;
+
+// Distance conversions. Distances are stored canonically in km; the UI converts
+// for players who prefer imperial units.
+const KM_PER_MI = 1.609344;
+export function kmToMi(km: number): number {
+  return km / KM_PER_MI;
+}
+export function miToKm(mi: number): number {
+  return mi * KM_PER_MI;
+}
