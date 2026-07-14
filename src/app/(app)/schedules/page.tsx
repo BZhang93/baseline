@@ -10,11 +10,15 @@ function fmtWindow(start: Date | null, end: Date | null): string {
 
 function ScheduleCard({ s }: { s: ScheduleSummary }) {
   return (
-    <li className="rounded-lg border border-gray-200 p-4">
-      <div className="flex items-baseline justify-between">
-        <h3 className="font-medium">{s.name}</h3>
-        <span className="text-sm text-gray-500">{s.eventCount} events</span>
-      </div>
+    <li>
+      <Link
+        href={`/schedules/${s.id}`}
+        className="block rounded-lg border border-gray-200 p-4 hover:border-gray-400"
+      >
+        <div className="flex items-baseline justify-between">
+          <h3 className="font-medium">{s.name}</h3>
+          <span className="text-sm text-gray-500">{s.eventCount} events</span>
+        </div>
       <p className="text-sm text-gray-500">{fmtWindow(s.startDate, s.endDate)}</p>
       <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">
         <div>
@@ -29,11 +33,12 @@ function ScheduleCard({ s }: { s: ScheduleSummary }) {
           <div className="text-gray-500">Est. travel</div>
           <div>{formatTravelTime(s.travelTimeMin)}</div>
         </div>
-        <div>
-          <div className="text-gray-500">Est. travel cost</div>
-          <div>{formatMoney(s.travelCost)}</div>
+          <div>
+            <div className="text-gray-500">Est. travel cost</div>
+            <div>{formatMoney(s.travelCost)}</div>
+          </div>
         </div>
-      </div>
+      </Link>
     </li>
   );
 }

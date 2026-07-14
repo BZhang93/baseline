@@ -132,54 +132,81 @@ export async function getBrowseData(
     where.OR = [{ name: contains }, { city: contains }, { country: contains }];
   }
 
-  const [tournaments, rankingRows] = await Promise.all([
+  const [tournaments, pointsAt] = await Promise.all([
     prisma.tournament.findMany({
       where,
       include: { category: true, cutoff: true },
       orderBy: [{ startDate: "asc" }, { name: "asc" }],
     }),
-    prisma.rankingEntry.findMany({ select: { tour: true, rank: true, points: true } }),
+    loadRankingLookup(),
   ]);
 
-  // rank -> points, per tour.
-  const pointsByTourRank = new Map<string, number>();
-  for (const r of rankingRows) {
-    pointsByTourRank.set(`${r.tour}:${r.rank}`, r.points);
-  }
-  const pointsAt = (tour: Tour, rank: number | null | undefined): number | null =>
-    rank == null ? null : pointsByTourRank.get(`${tour}:${rank}`) ?? null;
+  return tournaments.map((t) => ({
+    id: t.id,
+    name: t.name,
+    tour: t.tour,
+    tier: t.tier,
+    city: t.city,
+    country: t.country,
+    surface: t.surface,
+    startDate: t.startDate,
+    endDate: t.endDate,
+    drawSize: t.drawSize,
+    winnerPoints: roundNumber(t.category?.pointsByRound, "W"),
+    winnerPrize: roundNumber(t.category?.prizeMoneyByRound, "W"),
+    currency: t.category?.currency ?? null,
+    ...buildCutoffAndGap(t.tour, t.cutoff, pointsAt, player),
+  }));
+}
 
-  return tournaments.map((t) => {
-    const rankTour = rankingTourFor(t.tour);
-    const liveRank = t.cutoff?.liveCutoffRank ?? null;
-    const histRank = t.cutoff?.historicalCutoffRank ?? null;
-    const liveCutoffPoints = rankTour ? pointsAt(rankTour, liveRank) : null;
+// ---------------------------------------------------------------------------
+// Shared cutoff/ranking helpers (used by browse + schedule detail)
+// ---------------------------------------------------------------------------
 
-    const playerRank =
-      player?.ranking != null && player.rankingTour === t.tour ? player.ranking : null;
-    const playerPoints =
-      playerRank != null && rankTour ? pointsAt(rankTour, playerRank) : null;
+export type RankingLookup = (
+  tour: Tour,
+  rank: number | null | undefined,
+) => number | null;
 
-    return {
-      id: t.id,
-      name: t.name,
-      tour: t.tour,
-      tier: t.tier,
-      city: t.city,
-      country: t.country,
-      surface: t.surface,
-      startDate: t.startDate,
-      endDate: t.endDate,
-      drawSize: t.drawSize,
-      winnerPoints: roundNumber(t.category?.pointsByRound, "W"),
-      winnerPrize: roundNumber(t.category?.prizeMoneyByRound, "W"),
-      currency: t.category?.currency ?? null,
-      liveCutoff: { rank: liveRank, points: liveCutoffPoints },
-      historicalCutoff: {
-        rank: histRank,
-        points: rankTour ? pointsAt(rankTour, histRank) : null,
-      },
-      gap: computeGap(playerRank, liveRank, playerPoints, liveCutoffPoints),
-    };
+// Loads all rankings once and returns a (tour, rank) -> points lookup.
+export async function loadRankingLookup(): Promise<RankingLookup> {
+  const rows = await prisma.rankingEntry.findMany({
+    select: { tour: true, rank: true, points: true },
   });
+  const map = new Map<string, number>();
+  for (const r of rows) map.set(`${r.tour}:${r.rank}`, r.points);
+  return (tour, rank) => (rank == null ? null : (map.get(`${tour}:${rank}`) ?? null));
+}
+
+export interface CutoffAndGap {
+  liveCutoff: { rank: number | null; points: number | null };
+  historicalCutoff: { rank: number | null; points: number | null };
+  gap: GapView;
+}
+
+// The deterministic cutoff readout + player gap for one event (PRD §6.3.1).
+export function buildCutoffAndGap(
+  tour: Tour,
+  cutoff: { liveCutoffRank: number | null; historicalCutoffRank: number | null } | null,
+  pointsAt: RankingLookup,
+  player: Pick<Player, "ranking" | "rankingTour"> | null,
+): CutoffAndGap {
+  const rankTour = rankingTourFor(tour);
+  const liveRank = cutoff?.liveCutoffRank ?? null;
+  const histRank = cutoff?.historicalCutoffRank ?? null;
+  const liveCutoffPoints = rankTour ? pointsAt(rankTour, liveRank) : null;
+
+  const playerRank =
+    player?.ranking != null && player.rankingTour === tour ? player.ranking : null;
+  const playerPoints =
+    playerRank != null && rankTour ? pointsAt(rankTour, playerRank) : null;
+
+  return {
+    liveCutoff: { rank: liveRank, points: liveCutoffPoints },
+    historicalCutoff: {
+      rank: histRank,
+      points: rankTour ? pointsAt(rankTour, histRank) : null,
+    },
+    gap: computeGap(playerRank, liveRank, playerPoints, liveCutoffPoints),
+  };
 }

@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/prisma";
-import type { Tour, Surface } from "@/generated/prisma/client";
+import type { Tour, Surface, Player } from "@/generated/prisma/client";
+import {
+  loadRankingLookup,
+  buildCutoffAndGap,
+  type CutoffAndGap,
+} from "@/lib/tournaments";
 
 // ---------------------------------------------------------------------------
 // Pure helpers (unit-tested; no DB)
@@ -62,38 +67,45 @@ export interface CreateScheduleInput {
   tournamentIds: string[];
 }
 
-// Creates a schedule with its events (ordered by start date) and estimated
-// travel legs between consecutive events, caching the potential-score totals.
-// Returns the new schedule id.
-export async function createSchedule(
-  playerId: string,
-  input: CreateScheduleInput,
-): Promise<string> {
-  const selected = await prisma.tournament.findMany({
-    where: { id: { in: input.tournamentIds } },
-    include: { category: true },
-  });
+// The event fields needed to build legs + score totals.
+export interface LegEvent {
+  city: string;
+  country: string;
+  lat: number | null;
+  long: number | null;
+  startDate: Date;
+  category: { pointsByRound: unknown; prizeMoneyByRound: unknown } | null;
+}
 
-  // Preserve real events only, ordered chronologically.
-  const events = selected.sort(
-    (a, b) => a.startDate.getTime() - b.startDate.getTime(),
-  );
+export interface LegInput {
+  order: number;
+  fromLabel: string;
+  toLabel: string;
+  fromLat: number | null;
+  fromLong: number | null;
+  toLat: number | null;
+  toLong: number | null;
+  durationMinutes: number | null;
+  costEstimate: number | null;
+  date: Date;
+}
 
-  const legs: {
-    order: number;
-    fromLabel: string;
-    toLabel: string;
-    fromLat: number | null;
-    fromLong: number | null;
-    toLat: number | null;
-    toLong: number | null;
-    durationMinutes: number | null;
-    costEstimate: number | null;
-    date: Date;
-  }[] = [];
+export interface LegsAndScores {
+  legs: LegInput[];
+  scorePoints: number;
+  scorePrizeMoney: number;
+  scoreTravelTimeMin: number;
+  scoreTravelCost: number;
+}
 
-  let travelTime = 0;
+// Builds estimated travel legs between consecutive events and the cached score
+// totals. `events` must already be ordered chronologically. Shared by create
+// and edit so both stay consistent.
+export function buildLegsAndScores(events: LegEvent[]): LegsAndScores {
+  const legs: LegInput[] = [];
+  let travelTimeMin = 0;
   let travelCost = 0;
+
   for (let i = 1; i < events.length; i++) {
     const from = events[i - 1];
     const to = events[i];
@@ -101,14 +113,11 @@ export async function createSchedule(
     let costEstimate: number | null = null;
     if (from.lat != null && from.long != null && to.lat != null && to.long != null) {
       const est = estimateTravel(
-        haversineKm(
-          { lat: from.lat, long: from.long },
-          { lat: to.lat, long: to.long },
-        ),
+        haversineKm({ lat: from.lat, long: from.long }, { lat: to.lat, long: to.long }),
       );
       durationMinutes = est.durationMinutes;
       costEstimate = est.costEstimate;
-      travelTime += durationMinutes;
+      travelTimeMin += durationMinutes;
       travelCost += costEstimate;
     }
     legs.push({
@@ -125,14 +134,31 @@ export async function createSchedule(
     });
   }
 
-  const potentialPoints = events.reduce(
-    (sum, t) => sum + winnerValue(t.category?.pointsByRound),
-    0,
-  );
-  const potentialPrize = events.reduce(
-    (sum, t) => sum + winnerValue(t.category?.prizeMoneyByRound),
-    0,
-  );
+  return {
+    legs,
+    scorePoints: events.reduce((s, t) => s + winnerValue(t.category?.pointsByRound), 0),
+    scorePrizeMoney: events.reduce((s, t) => s + winnerValue(t.category?.prizeMoneyByRound), 0),
+    scoreTravelTimeMin: travelTimeMin,
+    scoreTravelCost: travelCost,
+  };
+}
+
+function byStartDate<T extends { startDate: Date }>(a: T, b: T): number {
+  return a.startDate.getTime() - b.startDate.getTime();
+}
+
+// Creates a schedule with its events (ordered by start date) and estimated
+// travel legs. Returns the new schedule id.
+export async function createSchedule(
+  playerId: string,
+  input: CreateScheduleInput,
+): Promise<string> {
+  const selected = await prisma.tournament.findMany({
+    where: { id: { in: input.tournamentIds } },
+    include: { category: true },
+  });
+  const events = [...selected].sort(byStartDate);
+  const built = buildLegsAndScores(events);
 
   const created = await prisma.schedule.create({
     data: {
@@ -147,14 +173,12 @@ export async function createSchedule(
       weightMoney: input.weightMoney,
       weightTravelTime: input.weightTravelTime,
       weightTravelCost: input.weightTravelCost,
-      scorePoints: potentialPoints,
-      scorePrizeMoney: potentialPrize,
-      scoreTravelTimeMin: travelTime,
-      scoreTravelCost: travelCost,
-      items: {
-        create: events.map((t, i) => ({ tournamentId: t.id, order: i })),
-      },
-      travelLegs: { create: legs },
+      scorePoints: built.scorePoints,
+      scorePrizeMoney: built.scorePrizeMoney,
+      scoreTravelTimeMin: built.scoreTravelTimeMin,
+      scoreTravelCost: built.scoreTravelCost,
+      items: { create: events.map((t, i) => ({ tournamentId: t.id, order: i })) },
+      travelLegs: { create: built.legs },
     },
   });
 
@@ -222,4 +246,165 @@ export async function getPlayerSchedules(
     travelTimeMin: s.scoreTravelTimeMin,
     travelCost: s.scoreTravelCost,
   }));
+}
+
+// ---------------------------------------------------------------------------
+// Detail + editing
+// ---------------------------------------------------------------------------
+
+export interface ScheduleEventView {
+  tournamentId: string;
+  name: string;
+  tour: Tour;
+  tier: string;
+  surface: Surface;
+  city: string;
+  country: string;
+  startDate: Date;
+  endDate: Date;
+  winnerPoints: number | null;
+  winnerPrize: number | null;
+  currency: string | null;
+  cutoff: CutoffAndGap;
+}
+
+export interface TravelLegView {
+  fromLabel: string;
+  toLabel: string;
+  durationMinutes: number | null;
+  costEstimate: number | null;
+}
+
+export interface ScheduleDetail {
+  id: string;
+  name: string;
+  startDate: Date | null;
+  endDate: Date | null;
+  budgetCap: number | null;
+  maxEvents: number | null;
+  minRestDays: number | null;
+  events: ScheduleEventView[];
+  legs: TravelLegView[];
+  totals: {
+    points: number | null;
+    prize: number | null;
+    travelTimeMin: number | null;
+    travelCost: number | null;
+  };
+}
+
+export async function getScheduleDetail(
+  playerId: string,
+  id: string,
+  player: Pick<Player, "ranking" | "rankingTour"> | null,
+): Promise<ScheduleDetail | null> {
+  const schedule = await prisma.schedule.findFirst({
+    where: { id, playerId },
+    include: {
+      items: { include: { tournament: { include: { category: true, cutoff: true } } } },
+      travelLegs: { orderBy: { order: "asc" } },
+    },
+  });
+  if (!schedule) return null;
+
+  const pointsAt = await loadRankingLookup();
+  const events: ScheduleEventView[] = schedule.items
+    .map((i) => i.tournament)
+    .sort(byStartDate)
+    .map((t) => ({
+      tournamentId: t.id,
+      name: t.name,
+      tour: t.tour,
+      tier: t.tier,
+      surface: t.surface,
+      city: t.city,
+      country: t.country,
+      startDate: t.startDate,
+      endDate: t.endDate,
+      winnerPoints: t.category ? winnerValue(t.category.pointsByRound) : null,
+      winnerPrize: t.category ? winnerValue(t.category.prizeMoneyByRound) : null,
+      currency: t.category?.currency ?? null,
+      cutoff: buildCutoffAndGap(t.tour, t.cutoff, pointsAt, player),
+    }));
+
+  return {
+    id: schedule.id,
+    name: schedule.name,
+    startDate: schedule.startDate,
+    endDate: schedule.endDate,
+    budgetCap: schedule.budgetCap,
+    maxEvents: schedule.maxEvents,
+    minRestDays: schedule.minRestDays,
+    events,
+    legs: schedule.travelLegs.map((l) => ({
+      fromLabel: l.fromLabel,
+      toLabel: l.toLabel,
+      durationMinutes: l.durationMinutes,
+      costEstimate: l.costEstimate,
+    })),
+    totals: {
+      points: schedule.scorePoints,
+      prize: schedule.scorePrizeMoney,
+      travelTimeMin: schedule.scoreTravelTimeMin,
+      travelCost: schedule.scoreTravelCost,
+    },
+  };
+}
+
+// Rebuilds the travel legs + cached scores from the schedule's current events.
+export async function recomputeScheduleTotals(scheduleId: string): Promise<void> {
+  const items = await prisma.scheduleItem.findMany({
+    where: { scheduleId },
+    include: { tournament: { include: { category: true } } },
+  });
+  const events = items.map((i) => i.tournament).sort(byStartDate);
+  const built = buildLegsAndScores(events);
+
+  await prisma.$transaction([
+    prisma.travelLeg.deleteMany({ where: { scheduleId } }),
+    prisma.schedule.update({
+      where: { id: scheduleId },
+      data: {
+        scorePoints: built.scorePoints,
+        scorePrizeMoney: built.scorePrizeMoney,
+        scoreTravelTimeMin: built.scoreTravelTimeMin,
+        scoreTravelCost: built.scoreTravelCost,
+        travelLegs: { create: built.legs },
+      },
+    }),
+  ]);
+}
+
+// Edit operations — all scoped to the owning player (return false if not owned).
+
+export async function renameSchedule(
+  playerId: string,
+  id: string,
+  name: string,
+): Promise<boolean> {
+  const res = await prisma.schedule.updateMany({
+    where: { id, playerId },
+    data: { name },
+  });
+  return res.count > 0;
+}
+
+export async function removeEventFromSchedule(
+  playerId: string,
+  id: string,
+  tournamentId: string,
+): Promise<boolean> {
+  const owned = await prisma.schedule.findFirst({
+    where: { id, playerId },
+    select: { id: true },
+  });
+  if (!owned) return false;
+  await prisma.scheduleItem.deleteMany({ where: { scheduleId: id, tournamentId } });
+  await recomputeScheduleTotals(id);
+  return true;
+}
+
+export async function deleteSchedule(playerId: string, id: string): Promise<boolean> {
+  const res = await prisma.schedule.deleteMany({ where: { id, playerId } });
+  return res.count > 0;
 }
