@@ -1,3 +1,4 @@
+import { getCurrentSession } from "@/lib/player";
 import { getTournamentsForPicker, parseEventIdsParam } from "@/lib/schedules";
 import { CreateScheduleForm } from "../_components/create-schedule-form";
 
@@ -7,7 +8,8 @@ export default async function NewSchedulePage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const sp = await searchParams;
-  const tournaments = await getTournamentsForPicker();
+  const session = await getCurrentSession();
+  const tournaments = await getTournamentsForPicker(session?.player.circuit ?? null);
 
   const eventsParam = Array.isArray(sp.events) ? sp.events[0] : sp.events;
   const initialSelectedIds = parseEventIdsParam(

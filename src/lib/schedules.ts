@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import type { Tour, Surface, Player } from "@/generated/prisma/client";
+import type { Tour, Surface, Player, Circuit } from "@/generated/prisma/client";
 import {
   loadRankingLookup,
   buildCutoffAndGap,
@@ -227,8 +227,13 @@ export interface PickerTournament {
 }
 
 // Minimal tournament list for the create-schedule event picker.
-export async function getTournamentsForPicker(): Promise<PickerTournament[]> {
+// Scoped to the player's circuit so a men's player can't add women's events
+// (and vice-versa); no circuit / logged-out lists everything.
+export async function getTournamentsForPicker(
+  circuit: Circuit | null,
+): Promise<PickerTournament[]> {
   return prisma.tournament.findMany({
+    where: circuit ? { circuit } : undefined,
     select: {
       id: true,
       name: true,
