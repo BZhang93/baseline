@@ -53,6 +53,9 @@ export function rankingTourFor(tour: Tour): Tour | null {
 export interface BrowseFilters {
   q?: string;
   tour?: Tour;
+  // When no single `tour` is chosen, restrict results to this set (e.g. the
+  // player's circuit tours), so "All tours" still means "all of my tours".
+  tours?: Tour[];
   surface?: Surface;
   from?: string; // ISO date
   to?: string; // ISO date
@@ -112,6 +115,7 @@ export async function getBrowseData(
 ): Promise<TournamentView[]> {
   const where: Prisma.TournamentWhereInput = {};
   if (filters.tour) where.tour = filters.tour;
+  else if (filters.tours && filters.tours.length > 0) where.tour = { in: filters.tours };
   if (filters.surface) where.surface = filters.surface;
   if (filters.country) where.country = filters.country;
   if (filters.from || filters.to) {

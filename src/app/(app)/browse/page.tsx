@@ -6,6 +6,7 @@ import {
   type BrowseFilters,
 } from "@/lib/tournaments";
 import { Tour, Surface } from "@/generated/prisma/client";
+import { resolveBrowseTours } from "@/lib/circuit";
 import { formatSurface, formatTour } from "@/lib/format";
 import { BrowseResults } from "./_components/browse-results";
 
@@ -46,7 +47,23 @@ export default async function BrowsePage({
     getCurrentSession(),
     getFilterOptions(),
   ]);
-  const tournaments = await getBrowseData(filters, session?.player ?? null);
+  const player = session?.player ?? null;
+
+  // Personalize the Tour filter to the player's circuit and tours.
+  const {
+    tour,
+    tours,
+    options: circuitTours,
+  } = resolveBrowseTours({
+    circuit: player?.circuit ?? null,
+    playerTours: player?.tours ?? [],
+    selectedTour: filters.tour,
+    tourExplicit: sp.tour !== undefined,
+  });
+  filters.tour = tour;
+  filters.tours = tours;
+
+  const tournaments = await getBrowseData(filters, player);
 
   // Fixed height so text inputs, selects, and date pickers line up (native
   // selects otherwise render a different height).
@@ -66,7 +83,7 @@ export default async function BrowsePage({
         />
         <select name="tour" defaultValue={filters.tour ?? ""} className={inputClass}>
           <option value="">All tours</option>
-          {Object.values(Tour).map((v) => (
+          {circuitTours.map((v) => (
             <option key={v} value={v}>
               {formatTour(v)}
             </option>
