@@ -2,12 +2,17 @@ import Link from "next/link";
 import { getCurrentSession } from "@/lib/player";
 import {
   getBrowseData,
-  getFilterCountries,
+  getFilterOptions,
   type BrowseFilters,
   type GapView,
   type TournamentView,
 } from "@/lib/tournaments";
 import { Tour, Surface } from "@/generated/prisma/client";
+
+// "CLAY" -> "Clay"
+function formatSurface(s: Surface): string {
+  return s.charAt(0) + s.slice(1).toLowerCase();
+}
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -92,8 +97,8 @@ function EventCard({ t }: { t: TournamentView }) {
       <div className="mt-3 flex flex-wrap gap-2 text-xs">
         <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">{t.tour}</span>
         <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">{t.tier.replaceAll("_", " ")}</span>
-        <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700 capitalize">
-          {t.surface.toLowerCase()}
+        <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">
+          {formatSurface(t.surface)}
         </span>
         <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">Draw {t.drawSize}</span>
       </div>
@@ -131,9 +136,9 @@ export default async function BrowsePage({
   const sp = await searchParams;
   const filters = parseFilters(sp);
 
-  const [session, countries] = await Promise.all([
+  const [session, { countries, surfaces }] = await Promise.all([
     getCurrentSession(),
-    getFilterCountries(),
+    getFilterOptions(),
   ]);
   const tournaments = await getBrowseData(filters, session?.player ?? null);
 
@@ -161,9 +166,9 @@ export default async function BrowsePage({
         </select>
         <select name="surface" defaultValue={filters.surface ?? ""} className={inputClass}>
           <option value="">All surfaces</option>
-          {Object.values(Surface).map((v) => (
-            <option key={v} value={v} className="capitalize">
-              {v.toLowerCase()}
+          {surfaces.map((v) => (
+            <option key={v} value={v}>
+              {formatSurface(v)}
             </option>
           ))}
         </select>
@@ -178,7 +183,7 @@ export default async function BrowsePage({
         <input type="date" name="from" defaultValue={filters.from ?? ""} className={inputClass} />
         <input type="date" name="to" defaultValue={filters.to ?? ""} className={inputClass} />
         <button type="submit" className="rounded bg-black px-3 py-1.5 text-sm text-white">
-          Filter
+          Update
         </button>
         <Link href="/browse" className="px-2 py-1.5 text-sm text-gray-500 underline">
           Clear
