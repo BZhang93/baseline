@@ -155,6 +155,7 @@ export function ProfileForm({
   function save() {
     setError(null);
     setSaved(false);
+    const budgetValue = numberOrNull(budget);
     const input: ProfileInput = {
       name: name.trim() || null,
       ranking: numberOrNull(ranking),
@@ -164,7 +165,8 @@ export function ProfileForm({
       homeBaseCity: homeBaseCity.trim() || null,
       homeBaseCountry: homeBaseCountry.trim() || null,
       surfacePrefs,
-      budget: numberOrNull(budget),
+      // Rounded to a whole number (budget is an integer amount).
+      budget: budgetValue == null ? null : Math.round(budgetValue),
       currency,
       unitSystem,
       transportModes,
