@@ -31,7 +31,7 @@ export default async function AppLayout({
               Create Schedule
             </Link>
             <span className="hidden text-sm text-gray-500 sm:inline">
-              {session.email}
+              {session.player.name ?? session.email}
             </span>
             <form action={logout}>
               <button

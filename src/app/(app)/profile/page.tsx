@@ -12,11 +12,11 @@ export default async function ProfilePage() {
     <div>
       <h1 className="text-2xl font-semibold">Profile</h1>
       <p className="mt-1 text-sm text-gray-500">
-        Signed in as {session.email}. Your ranking and preferences personalise
-        Browse and your schedules.
+        Your ranking and preferences personalize Browse and your schedules.
       </p>
 
       <ProfileForm
+        email={session.email}
         initial={{
           name: p.name,
           ranking: p.ranking,
