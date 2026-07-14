@@ -62,6 +62,22 @@ export interface BrowseFilters {
   country?: string;
 }
 
+// Resolves the Browse date window from the raw `from`/`to` search params.
+// An absent param falls back to the default window — today through the end of
+// the current year — so a fresh visit (and Clear) lands on it. An explicitly
+// empty param (the user cleared the field) means "no bound".
+export function resolveBrowseDates(
+  rawFrom: string | undefined,
+  rawTo: string | undefined,
+  now: Date,
+): { from?: string; to?: string } {
+  const today = now.toISOString().slice(0, 10);
+  const yearEnd = `${now.getUTCFullYear()}-12-31`;
+  const pick = (raw: string | undefined, fallback: string): string | undefined =>
+    raw === undefined ? fallback : raw.length > 0 ? raw : undefined;
+  return { from: pick(rawFrom, today), to: pick(rawTo, yearEnd) };
+}
+
 export interface TournamentView {
   id: string;
   name: string;

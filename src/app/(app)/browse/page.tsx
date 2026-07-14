@@ -3,6 +3,7 @@ import { getCurrentSession } from "@/lib/player";
 import {
   getBrowseData,
   getFilterOptions,
+  resolveBrowseDates,
   type BrowseFilters,
 } from "@/lib/tournaments";
 import { Tour, Surface } from "@/generated/prisma/client";
@@ -62,6 +63,14 @@ export default async function BrowsePage({
   });
   filters.tour = tour;
   filters.tours = tours;
+
+  // Default the date window to today → year-end; an absent param (fresh visit
+  // or Clear) falls back to the default, a cleared field means no bound.
+  const rawFrom = Array.isArray(sp.from) ? sp.from[0] : sp.from;
+  const rawTo = Array.isArray(sp.to) ? sp.to[0] : sp.to;
+  const { from, to } = resolveBrowseDates(rawFrom, rawTo, new Date());
+  filters.from = from;
+  filters.to = to;
 
   const tournaments = await getBrowseData(filters, player);
 
