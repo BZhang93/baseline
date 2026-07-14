@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentSession } from "@/lib/player";
+import { circuitForRankingTour } from "@/lib/circuit";
 import { ProfileForm } from "./_components/profile-form";
 
 export default async function ProfilePage() {
@@ -19,7 +20,8 @@ export default async function ProfilePage() {
         initial={{
           name: p.name,
           ranking: p.ranking,
-          rankingTour: p.rankingTour,
+          circuit: p.circuit ?? circuitForRankingTour(p.rankingTour),
+          tours: p.tours,
           nationality: p.nationality,
           homeBaseCity: p.homeBaseCity,
           homeBaseCountry: p.homeBaseCountry,

@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import type { PickerTournament } from "@/lib/schedules";
-import { formatDateRange, formatSurface } from "@/lib/format";
+import { formatDateRange, formatSurface, formatTour } from "@/lib/format";
 import {
   filterPickerTournaments,
   pickerOptions,
@@ -235,7 +235,7 @@ export function CreateScheduleForm({
             <option value="">All tours</option>
             {options.tours.map((v) => (
               <option key={v} value={v}>
-                {v}
+                {formatTour(v)}
               </option>
             ))}
           </select>
@@ -302,7 +302,7 @@ export function CreateScheduleForm({
               <span>
                 {t.name}{" "}
                 <span className="text-gray-500">
-                  · {t.city}, {t.country} · {formatDateRange(t.startDate, t.endDate)} · {t.tour}
+                  · {t.city}, {t.country} · {formatDateRange(t.startDate, t.endDate)} · {formatTour(t.tour)}
                 </span>
               </span>
               <button

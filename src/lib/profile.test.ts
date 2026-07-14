@@ -1,11 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { validateProfile, type ProfileInput } from "./profile";
-import { Tour, Surface, BudgetTier, UnitSystem } from "@/generated/prisma/client";
+import { Tour, Surface, BudgetTier, UnitSystem, Circuit } from "@/generated/prisma/client";
 
 const base: ProfileInput = {
   name: "Maya",
   ranking: 180,
-  rankingTour: Tour.WTA,
+  circuit: Circuit.WOMENS,
+  tours: [Tour.WTA, Tour.ITF],
   nationality: ["HR"],
   homeBaseCity: "Zagreb",
   homeBaseCountry: "Croatia",
@@ -27,7 +28,8 @@ describe("validateProfile", () => {
       validateProfile({
         name: null,
         ranking: null,
-        rankingTour: null,
+        circuit: null,
+        tours: [],
         nationality: [],
         homeBaseCity: null,
         homeBaseCountry: null,
@@ -46,8 +48,17 @@ describe("validateProfile", () => {
     expect(validateProfile({ ...base, ranking: 12.5 })).toMatch(/positive whole number/);
   });
 
-  it("rejects a ranking tour other than ATP/WTA", () => {
-    expect(validateProfile({ ...base, rankingTour: Tour.ITF })).toMatch(/ATP or WTA/);
+  it("rejects tours that don't belong to the chosen circuit", () => {
+    // ATP is a men's tour; not valid for a women's circuit.
+    expect(
+      validateProfile({ ...base, circuit: Circuit.WOMENS, tours: [Tour.ATP] }),
+    ).toMatch(/isn't part of your circuit/);
+  });
+
+  it("requires a circuit before selecting tours", () => {
+    expect(validateProfile({ ...base, circuit: null, tours: [Tour.WTA] })).toMatch(
+      /Choose a circuit/,
+    );
   });
 
   it("rejects a negative max distance", () => {

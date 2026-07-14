@@ -1,10 +1,12 @@
 import { prisma } from "@/lib/prisma";
-import { Tour, Surface, BudgetTier, UnitSystem } from "@/generated/prisma/client";
+import { Tour, Surface, BudgetTier, UnitSystem, Circuit } from "@/generated/prisma/client";
+import { toursForCircuit, rankingTourForCircuit } from "@/lib/circuit";
 
 export interface ProfileInput {
   name: string | null;
   ranking: number | null;
-  rankingTour: Tour | null;
+  circuit: Circuit | null;
+  tours: Tour[];
   nationality: string[];
   homeBaseCity: string | null;
   homeBaseCountry: string | null;
@@ -19,6 +21,7 @@ export interface ProfileInput {
 const SURFACES = Object.values(Surface) as string[];
 const BUDGET_TIERS = Object.values(BudgetTier) as string[];
 const UNIT_SYSTEMS = Object.values(UnitSystem) as string[];
+const CIRCUITS = Object.values(Circuit) as string[];
 
 // Validates a profile; returns an error message, or null if valid.
 export function validateProfile(input: ProfileInput): string | null {
@@ -28,8 +31,16 @@ export function validateProfile(input: ProfileInput): string | null {
   ) {
     return "Ranking must be a positive whole number.";
   }
-  if (input.rankingTour != null && input.rankingTour !== Tour.ATP && input.rankingTour !== Tour.WTA) {
-    return "Ranking tour must be ATP or WTA.";
+  if (input.circuit != null && !CIRCUITS.includes(input.circuit)) {
+    return "Unknown circuit.";
+  }
+  // Tours must belong to the chosen circuit (and a circuit is required to pick tours).
+  if (input.tours.length > 0) {
+    if (input.circuit == null) return "Choose a circuit before selecting tours.";
+    const allowed = new Set<string>(toursForCircuit(input.circuit));
+    if (input.tours.some((t) => !allowed.has(t))) {
+      return "A selected tour isn't part of your circuit.";
+    }
   }
   if (input.surfacePrefs.some((s) => !SURFACES.includes(s))) {
     return "Unknown surface preference.";
@@ -55,7 +66,10 @@ export async function updatePlayerProfile(
     data: {
       name: input.name,
       ranking: input.ranking,
-      rankingTour: input.rankingTour,
+      circuit: input.circuit,
+      tours: input.tours,
+      // Ranking list derives from the circuit; drives the cutoff gap.
+      rankingTour: input.circuit ? rankingTourForCircuit(input.circuit) : null,
       nationality: input.nationality,
       homeBaseCity: input.homeBaseCity,
       homeBaseCountry: input.homeBaseCountry,

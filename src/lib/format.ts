@@ -39,6 +39,12 @@ export function capitalize(word: string): string {
 
 export const formatSurface = capitalize;
 
+// Tour labels: ATP / WTA / ITF are acronyms (kept upper-case); "CHALLENGER"
+// reads as a word.
+export function formatTour(tour: string): string {
+  return tour === "CHALLENGER" ? "Challenger" : tour;
+}
+
 // Distance conversions. Distances are stored canonically in km; the UI converts
 // for players who prefer imperial units.
 const KM_PER_MI = 1.609344;

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { TournamentView } from "@/lib/tournaments";
-import { formatDateRange, formatMoney, formatSurface } from "@/lib/format";
+import { formatDateRange, formatMoney, formatSurface, formatTour } from "@/lib/format";
 import { lodgingSearchUrl } from "@/lib/booking-links";
 import { GapBadge } from "../../_components/gap-badge";
 
@@ -32,7 +32,7 @@ function EventCard({
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2 text-xs">
-        <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">{t.tour}</span>
+        <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">{formatTour(t.tour)}</span>
         <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">
           {t.tier.replaceAll("_", " ")}
         </span>
