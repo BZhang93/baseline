@@ -2,33 +2,10 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentSession } from "@/lib/player";
 import { getPlayerSchedules, type ScheduleSummary } from "@/lib/schedules";
-
-const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+import { formatDateRange, formatMoney, formatTravelTime } from "@/lib/format";
 
 function fmtWindow(start: Date | null, end: Date | null): string {
-  if (!start || !end) return "No dates set";
-  const s = `${MONTH[start.getUTCMonth()]} ${start.getUTCDate()}`;
-  const e =
-    start.getUTCMonth() === end.getUTCMonth()
-      ? `${end.getUTCDate()}`
-      : `${MONTH[end.getUTCMonth()]} ${end.getUTCDate()}`;
-  return `${s}–${e}`;
-}
-
-function fmtMoney(n: number | null): string {
-  if (n == null) return "—";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(n);
-}
-
-function fmtTravelTime(min: number | null): string {
-  if (min == null || min === 0) return "—";
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return m ? `${h}h ${m}m` : `${h}h`;
+  return start && end ? formatDateRange(start, end) : "No dates set";
 }
 
 function ScheduleCard({ s }: { s: ScheduleSummary }) {
@@ -46,15 +23,15 @@ function ScheduleCard({ s }: { s: ScheduleSummary }) {
         </div>
         <div>
           <div className="text-gray-500">Potential prize</div>
-          <div>{fmtMoney(s.potentialPrize)}</div>
+          <div>{formatMoney(s.potentialPrize)}</div>
         </div>
         <div>
           <div className="text-gray-500">Est. travel</div>
-          <div>{fmtTravelTime(s.travelTimeMin)}</div>
+          <div>{formatTravelTime(s.travelTimeMin)}</div>
         </div>
         <div>
           <div className="text-gray-500">Est. travel cost</div>
-          <div>{fmtMoney(s.travelCost)}</div>
+          <div>{formatMoney(s.travelCost)}</div>
         </div>
       </div>
     </li>

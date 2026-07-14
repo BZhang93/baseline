@@ -2,17 +2,8 @@
 
 import { useMemo, useState, useTransition } from "react";
 import type { PickerTournament } from "@/lib/schedules";
+import { formatDateRange } from "@/lib/format";
 import { createScheduleAction } from "../actions";
-
-const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-function fmtDates(start: Date, end: Date): string {
-  const s = `${MONTH[start.getUTCMonth()]} ${start.getUTCDate()}`;
-  const e =
-    start.getUTCMonth() === end.getUTCMonth()
-      ? `${end.getUTCDate()}`
-      : `${MONTH[end.getUTCMonth()]} ${end.getUTCDate()}`;
-  return `${s}–${e}`;
-}
 
 // Priority slider (0 = protect body/cost, 100 = maximise points) → objective weights.
 function weightsFromPriority(priority: number) {
@@ -113,7 +104,8 @@ export function CreateScheduleForm({ tournaments }: { tournaments: PickerTournam
           <label className={label}>
             Budget cap
             <input
-              inputMode="numeric"
+              type="number"
+              min={0}
               value={budgetCap}
               onChange={(e) => setBudgetCap(e.target.value)}
               placeholder="$"
@@ -123,7 +115,8 @@ export function CreateScheduleForm({ tournaments }: { tournaments: PickerTournam
           <label className={label}>
             Max events
             <input
-              inputMode="numeric"
+              type="number"
+              min={0}
               value={maxEvents}
               onChange={(e) => setMaxEvents(e.target.value)}
               className={field}
@@ -132,7 +125,8 @@ export function CreateScheduleForm({ tournaments }: { tournaments: PickerTournam
           <label className={label}>
             Min rest days
             <input
-              inputMode="numeric"
+              type="number"
+              min={0}
               value={minRestDays}
               onChange={(e) => setMinRestDays(e.target.value)}
               className={field}
@@ -185,7 +179,7 @@ export function CreateScheduleForm({ tournaments }: { tournaments: PickerTournam
               >
                 <span>
                   <span className="text-gray-400">{i + 1}.</span> {t.name}{" "}
-                  <span className="text-gray-500">· {fmtDates(t.startDate, t.endDate)}</span>
+                  <span className="text-gray-500">· {formatDateRange(t.startDate, t.endDate)}</span>
                 </span>
                 <button
                   onClick={() => remove(t.id)}
@@ -208,7 +202,7 @@ export function CreateScheduleForm({ tournaments }: { tournaments: PickerTournam
               <span>
                 {t.name}{" "}
                 <span className="text-gray-500">
-                  · {t.city}, {t.country} · {fmtDates(t.startDate, t.endDate)} · {t.tour}
+                  · {t.city}, {t.country} · {formatDateRange(t.startDate, t.endDate)} · {t.tour}
                 </span>
               </span>
               <button
