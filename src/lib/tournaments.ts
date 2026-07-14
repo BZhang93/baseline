@@ -89,14 +89,28 @@ function roundNumber(json: unknown, key: string): number | null {
   return null;
 }
 
-// Distinct countries present in the dataset, for the region filter dropdown.
-export async function getFilterCountries(): Promise<string[]> {
-  const rows = await prisma.tournament.findMany({
-    select: { country: true },
-    distinct: ["country"],
-    orderBy: { country: "asc" },
-  });
-  return rows.map((r) => r.country);
+// Distinct filter options actually present in the dataset, so dropdowns never
+// offer a value (e.g. a surface) that would return zero results.
+export async function getFilterOptions(): Promise<{
+  countries: string[];
+  surfaces: Surface[];
+}> {
+  const [countryRows, surfaceRows] = await Promise.all([
+    prisma.tournament.findMany({
+      select: { country: true },
+      distinct: ["country"],
+      orderBy: { country: "asc" },
+    }),
+    prisma.tournament.findMany({
+      select: { surface: true },
+      distinct: ["surface"],
+      orderBy: { surface: "asc" },
+    }),
+  ]);
+  return {
+    countries: countryRows.map((r) => r.country),
+    surfaces: surfaceRows.map((r) => r.surface),
+  };
 }
 
 export async function getBrowseData(
