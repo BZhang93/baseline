@@ -6,7 +6,7 @@ import {
   type BrowseFilters,
 } from "@/lib/tournaments";
 import { Tour, Surface } from "@/generated/prisma/client";
-import { formatSurface } from "@/lib/format";
+import { formatSurface, formatTour } from "@/lib/format";
 import { BrowseResults } from "./_components/browse-results";
 
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -66,7 +66,7 @@ export default async function BrowsePage({
           <option value="">All tours</option>
           {Object.values(Tour).map((v) => (
             <option key={v} value={v}>
-              {v}
+              {formatTour(v)}
             </option>
           ))}
         </select>

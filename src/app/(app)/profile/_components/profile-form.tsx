@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { Tour, Surface, BudgetTier, UnitSystem, Circuit } from "@/generated/prisma/enums";
-import { capitalize, kmToMi, miToKm } from "@/lib/format";
+import { capitalize, kmToMi, miToKm, formatTour } from "@/lib/format";
 import { toursForCircuit } from "@/lib/circuit";
 import type { ProfileInput } from "@/lib/profile";
 import { updateProfileAction } from "../actions";
@@ -177,7 +177,7 @@ export function ProfileForm({ initial }: { initial: ProfileInput }) {
                   checked={tours.includes(t)}
                   onChange={() => toggleTour(t)}
                 />
-                {t}
+                {formatTour(t)}
               </label>
             ))}
           </div>

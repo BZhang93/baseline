@@ -6,7 +6,7 @@ import {
   type ScheduleEventView,
   type TravelLegView,
 } from "@/lib/schedules";
-import { formatDateRange, formatMoney, formatSurface, formatTravelTime } from "@/lib/format";
+import { formatDateRange, formatMoney, formatSurface, formatTour, formatTravelTime } from "@/lib/format";
 import { flightSearchUrl, lodgingSearchUrl } from "@/lib/booking-links";
 import { GapBadge } from "../../_components/gap-badge";
 import { RenameName } from "../_components/rename-name";
@@ -44,7 +44,7 @@ function EventRow({
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2 text-xs">
-        <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">{e.tour}</span>
+        <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">{formatTour(e.tour)}</span>
         <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">
           {e.tier.replaceAll("_", " ")}
         </span>
