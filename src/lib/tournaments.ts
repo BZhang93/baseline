@@ -134,12 +134,10 @@ export async function getBrowseData(
   else if (filters.tours && filters.tours.length > 0) where.tour = { in: filters.tours };
   if (filters.surface) where.surface = filters.surface;
   if (filters.country) where.country = filters.country;
-  if (filters.from || filters.to) {
-    where.startDate = {
-      ...(filters.from ? { gte: new Date(filters.from) } : {}),
-      ...(filters.to ? { lte: new Date(filters.to) } : {}),
-    };
-  }
+  // Match tournaments that OVERLAP the [from, to] window, not just those whose
+  // start falls inside it — so an event already in progress today still shows.
+  if (filters.from) where.endDate = { gte: new Date(filters.from) };
+  if (filters.to) where.startDate = { lte: new Date(filters.to) };
   if (filters.q) {
     const contains = { contains: filters.q, mode: Prisma.QueryMode.insensitive };
     where.OR = [{ name: contains }, { city: contains }, { country: contains }];
