@@ -90,12 +90,12 @@ function EventCard({ t }: { t: TournamentView }) {
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2 text-xs">
-        <span className="rounded bg-gray-100 px-2 py-0.5">{t.tour}</span>
-        <span className="rounded bg-gray-100 px-2 py-0.5">{t.tier.replaceAll("_", " ")}</span>
-        <span className="rounded bg-gray-100 px-2 py-0.5 capitalize">
+        <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">{t.tour}</span>
+        <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">{t.tier.replaceAll("_", " ")}</span>
+        <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700 capitalize">
           {t.surface.toLowerCase()}
         </span>
-        <span className="rounded bg-gray-100 px-2 py-0.5">Draw {t.drawSize}</span>
+        <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">Draw {t.drawSize}</span>
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">
