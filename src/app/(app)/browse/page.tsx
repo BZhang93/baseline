@@ -8,11 +8,7 @@ import {
   type TournamentView,
 } from "@/lib/tournaments";
 import { Tour, Surface } from "@/generated/prisma/client";
-
-// "CLAY" -> "Clay"
-function formatSurface(s: Surface): string {
-  return s.charAt(0) + s.slice(1).toLowerCase();
-}
+import { formatDateRange, formatMoney, formatSurface } from "@/lib/format";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -37,26 +33,6 @@ function parseFilters(sp: SearchParams): BrowseFilters {
     to: str(sp.to),
     country: str(sp.country),
   };
-}
-
-const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-function fmtDates(start: Date, end: Date): string {
-  const s = `${MONTH[start.getUTCMonth()]} ${start.getUTCDate()}`;
-  const e =
-    start.getUTCMonth() === end.getUTCMonth()
-      ? `${end.getUTCDate()}`
-      : `${MONTH[end.getUTCMonth()]} ${end.getUTCDate()}`;
-  return `${s}–${e}`;
-}
-
-function fmtMoney(amount: number | null, currency: string | null): string {
-  if (amount == null) return "—";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: currency ?? "USD",
-    maximumFractionDigits: 0,
-  }).format(amount);
 }
 
 function GapBadge({ gap }: { gap: GapView }) {
@@ -88,7 +64,7 @@ function EventCard({ t }: { t: TournamentView }) {
         <div>
           <h3 className="font-medium">{t.name}</h3>
           <p className="text-sm text-gray-500">
-            {t.city}, {t.country} · {fmtDates(t.startDate, t.endDate)}
+            {t.city}, {t.country} · {formatDateRange(t.startDate, t.endDate)}
           </p>
         </div>
         <GapBadge gap={t.gap} />
@@ -110,7 +86,7 @@ function EventCard({ t }: { t: TournamentView }) {
         </div>
         <div>
           <div className="text-gray-500">Prize (W)</div>
-          <div>{fmtMoney(t.winnerPrize, t.currency)}</div>
+          <div>{formatMoney(t.winnerPrize, t.currency ?? undefined)}</div>
         </div>
         <div>
           <div className="text-gray-500">Live cutoff</div>
