@@ -1,5 +1,13 @@
 import { prisma } from "@/lib/prisma";
-import { Tour, Surface, BudgetTier, UnitSystem, Circuit } from "@/generated/prisma/client";
+import {
+  Tour,
+  Surface,
+  BudgetTier,
+  UnitSystem,
+  Circuit,
+  TransportMode,
+  LodgingType,
+} from "@/generated/prisma/client";
 import { toursForCircuit, rankingTourForCircuit } from "@/lib/circuit";
 
 export interface ProfileInput {
@@ -13,6 +21,10 @@ export interface ProfileInput {
   surfacePrefs: Surface[];
   budgetTier: BudgetTier | null;
   unitSystem: UnitSystem;
+  transportModes: TransportMode[];
+  lodgingTypes: LodgingType[];
+  travelSpend: number;
+  lodgingSpend: number;
   dietaryPrefs: string[];
   maxDistanceToVenueKm: number | null;
   lodgingAmenities: string[];
@@ -22,6 +34,15 @@ const SURFACES = Object.values(Surface) as string[];
 const BUDGET_TIERS = Object.values(BudgetTier) as string[];
 const UNIT_SYSTEMS = Object.values(UnitSystem) as string[];
 const CIRCUITS = Object.values(Circuit) as string[];
+const TRANSPORT_MODES = Object.values(TransportMode) as string[];
+const LODGING_TYPES = Object.values(LodgingType) as string[];
+
+function validSpend(n: number): boolean {
+  return Number.isInteger(n) && n >= 0 && n <= 100;
+}
+function hasDuplicates<T>(arr: T[]): boolean {
+  return new Set(arr).size !== arr.length;
+}
 
 // Validates a profile; returns an error message, or null if valid.
 export function validateProfile(input: ProfileInput): string | null {
@@ -51,6 +72,18 @@ export function validateProfile(input: ProfileInput): string | null {
   if (!UNIT_SYSTEMS.includes(input.unitSystem)) {
     return "Unknown measurement system.";
   }
+  if (
+    input.transportModes.some((m) => !TRANSPORT_MODES.includes(m)) ||
+    hasDuplicates(input.transportModes)
+  ) {
+    return "Invalid transport modes.";
+  }
+  if (input.lodgingTypes.some((t) => !LODGING_TYPES.includes(t)) || hasDuplicates(input.lodgingTypes)) {
+    return "Invalid lodging types.";
+  }
+  if (!validSpend(input.travelSpend) || !validSpend(input.lodgingSpend)) {
+    return "Spend preferences must be between 0 and 100.";
+  }
   if (input.maxDistanceToVenueKm != null && input.maxDistanceToVenueKm < 0) {
     return "Max distance can't be negative.";
   }
@@ -76,6 +109,10 @@ export async function updatePlayerProfile(
       surfacePrefs: input.surfacePrefs,
       budgetTier: input.budgetTier,
       unitSystem: input.unitSystem,
+      transportModes: input.transportModes,
+      lodgingTypes: input.lodgingTypes,
+      travelSpend: input.travelSpend,
+      lodgingSpend: input.lodgingSpend,
       dietaryPrefs: input.dietaryPrefs,
       maxDistanceToVenueKm: input.maxDistanceToVenueKm,
       lodgingAmenities: input.lodgingAmenities,

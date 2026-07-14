@@ -1,8 +1,23 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Tour, Surface, BudgetTier, UnitSystem, Circuit } from "@/generated/prisma/enums";
-import { capitalize, kmToMi, miToKm, formatTour } from "@/lib/format";
+import {
+  Tour,
+  Surface,
+  BudgetTier,
+  UnitSystem,
+  Circuit,
+  TransportMode,
+  LodgingType,
+} from "@/generated/prisma/enums";
+import {
+  capitalize,
+  kmToMi,
+  miToKm,
+  formatTour,
+  formatTransportMode,
+  formatLodgingType,
+} from "@/lib/format";
 import { toursForCircuit } from "@/lib/circuit";
 import type { ProfileInput } from "@/lib/profile";
 import { updateProfileAction } from "../actions";
@@ -29,6 +44,8 @@ const CIRCUIT_OPTIONS: { value: Circuit; label: string }[] = [
 
 // Carpet is excluded — no current events use it.
 const SURFACE_OPTIONS = Object.values(Surface).filter((s) => s !== Surface.CARPET);
+const ALL_TRANSPORT = Object.values(TransportMode);
+const ALL_LODGING = Object.values(LodgingType);
 
 const distanceUnit = (u: UnitSystem) => (u === UnitSystem.IMPERIAL ? "mi" : "km");
 
@@ -52,6 +69,10 @@ export function ProfileForm({
   );
   const [budgetTier, setBudgetTier] = useState<string>(initial.budgetTier ?? "");
   const [unitSystem, setUnitSystem] = useState<UnitSystem>(initial.unitSystem);
+  const [transportModes, setTransportModes] = useState<TransportMode[]>(initial.transportModes);
+  const [lodgingTypes, setLodgingTypes] = useState<LodgingType[]>(initial.lodgingTypes);
+  const [travelSpend, setTravelSpend] = useState(initial.travelSpend);
+  const [lodgingSpend, setLodgingSpend] = useState(initial.lodgingSpend);
   const [dietaryPrefs, setDietaryPrefs] = useState(csv(initial.dietaryPrefs));
   // Displayed in the player's current unit; converted to km on save.
   const [maxDistance, setMaxDistance] = useState(() => {
@@ -86,6 +107,28 @@ export function ProfileForm({
   }
 
   const tourOptions = circuit === "" ? [] : toursForCircuit(circuit);
+
+  function addTransport(m: TransportMode) {
+    setTransportModes((prev) => (prev.includes(m) ? prev : [...prev, m]));
+  }
+  function removeTransport(m: TransportMode) {
+    setTransportModes((prev) => prev.filter((x) => x !== m));
+  }
+  function moveTransport(index: number, dir: -1 | 1) {
+    setTransportModes((prev) => {
+      const next = [...prev];
+      const target = index + dir;
+      if (target < 0 || target >= next.length) return prev;
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
+  function toggleLodging(t: LodgingType) {
+    setLodgingTypes((prev) =>
+      prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t],
+    );
+  }
+  const availableTransport = ALL_TRANSPORT.filter((m) => !transportModes.includes(m));
 
   // Switching units converts the current max-distance value once, so the number
   // keeps meaning the same real-world distance.
@@ -122,6 +165,10 @@ export function ProfileForm({
       surfacePrefs,
       budgetTier: (budgetTier || null) as BudgetTier | null,
       unitSystem,
+      transportModes,
+      lodgingTypes,
+      travelSpend,
+      lodgingSpend,
       dietaryPrefs: parseCsv(dietaryPrefs),
       maxDistanceToVenueKm: maxDistanceKm(),
       lodgingAmenities: parseCsv(lodgingAmenities),
@@ -293,6 +340,121 @@ export function ProfileForm({
           className={field}
         />
       </label>
+
+      <div className="mt-2 border-t border-gray-200 pt-4">
+        <h2 className="text-sm font-medium">Travel &amp; Lodging</h2>
+
+        {/* Transport modes — ranked */}
+        <fieldset className={`${label} mt-3`}>
+          <span>Transport modes, in order of preference</span>
+          {transportModes.length === 0 ? (
+            <p className="mt-1 text-xs text-gray-500">Add the modes you&apos;ll take.</p>
+          ) : (
+            <ol className="mt-1 flex flex-col gap-2">
+              {transportModes.map((m, i) => (
+                <li
+                  key={m}
+                  className="flex items-center justify-between rounded border border-gray-200 px-3 py-1.5 text-sm"
+                >
+                  <span>
+                    <span className="text-gray-400">{i + 1}.</span> {formatTransportMode(m)}
+                  </span>
+                  <span className="flex items-center gap-2 text-gray-500">
+                    <button
+                      type="button"
+                      onClick={() => moveTransport(i, -1)}
+                      disabled={i === 0}
+                      aria-label="Move up"
+                      className="disabled:opacity-30"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveTransport(i, 1)}
+                      disabled={i === transportModes.length - 1}
+                      aria-label="Move down"
+                      className="disabled:opacity-30"
+                    >
+                      ↓
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeTransport(m)}
+                      className="text-xs hover:text-red-600"
+                    >
+                      Remove
+                    </button>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          )}
+          {availableTransport.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {availableTransport.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => addTransport(m)}
+                  className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
+                >
+                  + {formatTransportMode(m)}
+                </button>
+              ))}
+            </div>
+          )}
+        </fieldset>
+
+        {/* Lodging types */}
+        <fieldset className={`${label} mt-4`}>
+          <span>Lodging types</span>
+          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-2">
+            {ALL_LODGING.map((t) => (
+              <label key={t} className="flex items-center gap-1.5 text-sm">
+                <input
+                  type="checkbox"
+                  checked={lodgingTypes.includes(t)}
+                  onChange={() => toggleLodging(t)}
+                />
+                {formatLodgingType(t)}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        {/* Spend sliders */}
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div className={label}>
+            <span>Travel spend</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={travelSpend}
+              onChange={(e) => setTravelSpend(Number(e.target.value))}
+            />
+            <div className="flex justify-between text-xs text-gray-400">
+              <span>Save</span>
+              <span>Spend</span>
+            </div>
+          </div>
+          <div className={label}>
+            <span>Lodging spend</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={lodgingSpend}
+              onChange={(e) => setLodgingSpend(Number(e.target.value))}
+            />
+            <div className="flex justify-between text-xs text-gray-400">
+              <span>Save</span>
+              <span>Spend</span>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <label className={label}>
         Dietary Preferences

@@ -1,6 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { validateProfile, type ProfileInput } from "./profile";
-import { Tour, Surface, BudgetTier, UnitSystem, Circuit } from "@/generated/prisma/client";
+import {
+  Tour,
+  Surface,
+  BudgetTier,
+  UnitSystem,
+  Circuit,
+  TransportMode,
+  LodgingType,
+} from "@/generated/prisma/client";
 
 const base: ProfileInput = {
   name: "Maya",
@@ -13,6 +21,10 @@ const base: ProfileInput = {
   surfacePrefs: [Surface.CLAY],
   budgetTier: BudgetTier.LOW,
   unitSystem: UnitSystem.METRIC,
+  transportModes: [TransportMode.FLIGHT, TransportMode.TRAIN],
+  lodgingTypes: [LodgingType.HOTEL, LodgingType.RESIDENCE],
+  travelSpend: 60,
+  lodgingSpend: 30,
   dietaryPrefs: ["gluten-free"],
   maxDistanceToVenueKm: 15,
   lodgingAmenities: ["kitchen"],
@@ -36,11 +48,29 @@ describe("validateProfile", () => {
         surfacePrefs: [],
         budgetTier: null,
         unitSystem: UnitSystem.IMPERIAL,
+        transportModes: [],
+        lodgingTypes: [],
+        travelSpend: 50,
+        lodgingSpend: 50,
         dietaryPrefs: [],
         maxDistanceToVenueKm: null,
         lodgingAmenities: [],
       }),
     ).toBeNull();
+  });
+
+  it("rejects out-of-range spend", () => {
+    expect(validateProfile({ ...base, travelSpend: 150 })).toMatch(/between 0 and 100/);
+    expect(validateProfile({ ...base, lodgingSpend: -1 })).toMatch(/between 0 and 100/);
+  });
+
+  it("rejects duplicate transport modes", () => {
+    expect(
+      validateProfile({
+        ...base,
+        transportModes: [TransportMode.FLIGHT, TransportMode.FLIGHT],
+      }),
+    ).toMatch(/Invalid transport/);
   });
 
   it("rejects a non-positive or non-integer ranking", () => {

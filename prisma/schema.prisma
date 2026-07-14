@@ -57,6 +57,23 @@ enum Circuit {
   WOMENS
 }
 
+enum TransportMode {
+  FLIGHT
+  TRAIN
+  BUS
+  CAR
+  RIDESHARE
+}
+
+enum LodgingType {
+  HOTEL
+  RESIDENCE
+  APARTMENT
+  HOSTEL
+  HOST_HOUSING
+  BNB
+}
+
 /// How a travel leg between two events is made.
 enum TravelMode {
   FLIGHT
@@ -200,6 +217,12 @@ model Player {
   dietaryPrefs String[]
 
   unitSystem UnitSystem @default(METRIC)
+
+  // Travel & lodging preferences (BRA-53).
+  transportModes TransportMode[] // ordered = ranked preference
+  lodgingTypes   LodgingType[]
+  travelSpend    Int             @default(50) // 0 = save, 100 = spend
+  lodgingSpend   Int             @default(50)
 
   // Always stored in km; the UI converts for display when the player uses
   // imperial units.
