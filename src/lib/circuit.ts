@@ -22,6 +22,16 @@ export function circuitForRankingTour(tour: Tour | null): Circuit | null {
   return null;
 }
 
+// The circuit a tournament belongs to. ATP/Challenger are men's, WTA is
+// women's; ITF covers both, so its gender comes from the tier (ITF_M* vs
+// ITF_W*, e.g. "ITF_M25" / "ITF_W25").
+export function circuitForTournament(tour: Tour, tier: string): Circuit {
+  if (tour === Tour.WTA) return Circuit.WOMENS;
+  if (tour === Tour.ATP || tour === Tour.CHALLENGER) return Circuit.MENS;
+  // ITF (or any future shared tour): read the gender marker from the tier.
+  return /_W/i.test(tier) ? Circuit.WOMENS : Circuit.MENS;
+}
+
 // Resolves the Browse page's Tour filter from the player's profile:
 //  - `options`: the tours shown in the dropdown (the player's circuit, or all
 //    tours when there's no circuit / no player).

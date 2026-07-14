@@ -111,6 +111,8 @@ model Tournament {
   id          String  @id @default(cuid())
   name        String
   tour        Tour
+  /// Men's or women's. Derived from tour (+ tier for ITF, which covers both).
+  circuit     Circuit
   /// Matches a TournamentCategory.tier; points/prize are read from the category.
   tier        String
   edition     Int // year, e.g. 2026
