@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeGap, rankingTourFor } from "./tournaments";
+import { computeGap, rankingTourFor, buildRankingLookup } from "./tournaments";
 import { Tour } from "@/generated/prisma/client";
 
 describe("computeGap", () => {
@@ -50,5 +50,46 @@ describe("rankingTourFor", () => {
     expect(rankingTourFor(Tour.WTA)).toBe(Tour.WTA);
     expect(rankingTourFor(Tour.CHALLENGER)).toBeNull();
     expect(rankingTourFor(Tour.ITF)).toBeNull();
+  });
+});
+
+describe("buildRankingLookup", () => {
+  const OLD = new Date("2026-06-29");
+  const NEW = new Date("2026-07-06");
+
+  it("looks up points by (tour, rank)", () => {
+    const lookup = buildRankingLookup([
+      { tour: Tour.ATP, rank: 1, points: 11000, asOfDate: OLD },
+      { tour: Tour.WTA, rank: 1, points: 10000, asOfDate: OLD },
+    ]);
+    expect(lookup(Tour.ATP, 1)).toBe(11000);
+    expect(lookup(Tour.WTA, 1)).toBe(10000);
+  });
+
+  it("uses the latest snapshot per tour (a stale row can't overwrite it)", () => {
+    const lookup = buildRankingLookup([
+      { tour: Tour.ATP, rank: 1, points: 9000, asOfDate: OLD },
+      { tour: Tour.ATP, rank: 1, points: 11500, asOfDate: NEW },
+    ]);
+    expect(lookup(Tour.ATP, 1)).toBe(11500);
+  });
+
+  it("keeps each tour's latest snapshot independent", () => {
+    // WTA only has the old snapshot; ATP has a newer one.
+    const lookup = buildRankingLookup([
+      { tour: Tour.ATP, rank: 5, points: 4000, asOfDate: OLD },
+      { tour: Tour.ATP, rank: 5, points: 4200, asOfDate: NEW },
+      { tour: Tour.WTA, rank: 5, points: 3800, asOfDate: OLD },
+    ]);
+    expect(lookup(Tour.ATP, 5)).toBe(4200);
+    expect(lookup(Tour.WTA, 5)).toBe(3800);
+  });
+
+  it("returns null for an unknown rank or null rank", () => {
+    const lookup = buildRankingLookup([
+      { tour: Tour.ATP, rank: 1, points: 11000, asOfDate: OLD },
+    ]);
+    expect(lookup(Tour.ATP, 999)).toBeNull();
+    expect(lookup(Tour.ATP, null)).toBeNull();
   });
 });
