@@ -50,6 +50,13 @@ enum UnitSystem {
   IMPERIAL
 }
 
+/// The player's circuit — men's or women's tennis. Determines which tours and
+/// ranking list apply.
+enum Circuit {
+  MENS
+  WOMENS
+}
+
 /// How a travel leg between two events is made.
 enum TravelMode {
   FLIGHT
@@ -176,6 +183,10 @@ model Player {
 
   name        String?
   ranking     Int?
+  circuit     Circuit?
+  /// Tours the player competes on (filtered by circuit).
+  tours       Tour[]
+  /// Derived from `circuit` (Men's → ATP, Women's → WTA); used for the cutoff gap.
   rankingTour Tour?
   nationality String[] // ISO country codes
 

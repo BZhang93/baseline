@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Tour, Surface, BudgetTier, UnitSystem } from "@/generated/prisma/enums";
+import { Tour, Surface, BudgetTier, UnitSystem, Circuit } from "@/generated/prisma/enums";
 import { capitalize, kmToMi, miToKm } from "@/lib/format";
+import { toursForCircuit } from "@/lib/circuit";
 import type { ProfileInput } from "@/lib/profile";
 import { updateProfileAction } from "../actions";
 
@@ -21,11 +22,9 @@ function numberOrNull(v: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-// The gendered tour options: choosing a gender selects the corresponding
-// ranking tour (Men → ATP, Women → WTA).
-const TOUR_OPTIONS: { value: Tour; label: string }[] = [
-  { value: Tour.ATP, label: "Men's (ATP)" },
-  { value: Tour.WTA, label: "Women's (WTA)" },
+const CIRCUIT_OPTIONS: { value: Circuit; label: string }[] = [
+  { value: Circuit.MENS, label: "Men's" },
+  { value: Circuit.WOMENS, label: "Women's" },
 ];
 
 // Carpet is excluded — no current events use it.
@@ -36,7 +35,8 @@ const distanceUnit = (u: UnitSystem) => (u === UnitSystem.IMPERIAL ? "mi" : "km"
 export function ProfileForm({ initial }: { initial: ProfileInput }) {
   const [name, setName] = useState(initial.name ?? "");
   const [ranking, setRanking] = useState(initial.ranking?.toString() ?? "");
-  const [rankingTour, setRankingTour] = useState<string>(initial.rankingTour ?? "");
+  const [circuit, setCircuit] = useState<Circuit | "">(initial.circuit ?? "");
+  const [tours, setTours] = useState<Tour[]>(initial.tours);
   const [nationality, setNationality] = useState(csv(initial.nationality));
   const [homeBaseCity, setHomeBaseCity] = useState(initial.homeBaseCity ?? "");
   const [homeBaseCountry, setHomeBaseCountry] = useState(initial.homeBaseCountry ?? "");
@@ -68,6 +68,19 @@ export function ProfileForm({ initial }: { initial: ProfileInput }) {
     );
   }
 
+  // Changing circuit repopulates the tour options; prune any now-invalid picks.
+  function changeCircuit(next: Circuit) {
+    const allowed = new Set(toursForCircuit(next));
+    setTours((prev) => prev.filter((t) => allowed.has(t)));
+    setCircuit(next);
+  }
+
+  function toggleTour(t: Tour) {
+    setTours((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
+  }
+
+  const tourOptions = circuit === "" ? [] : toursForCircuit(circuit);
+
   // Switching units converts the current max-distance value once, so the number
   // keeps meaning the same real-world distance.
   function changeUnit(next: UnitSystem) {
@@ -95,7 +108,8 @@ export function ProfileForm({ initial }: { initial: ProfileInput }) {
     const input: ProfileInput = {
       name: name.trim() || null,
       ranking: numberOrNull(ranking),
-      rankingTour: (rankingTour || null) as Tour | null,
+      circuit: (circuit || null) as Circuit | null,
+      tours,
       nationality: parseCsv(nationality),
       homeBaseCity: homeBaseCity.trim() || null,
       homeBaseCountry: homeBaseCountry.trim() || null,
@@ -134,24 +148,44 @@ export function ProfileForm({ initial }: { initial: ProfileInput }) {
             className={field}
           />
         </label>
-        <label className={label}>
-          Tour
-          <select
-            value={rankingTour}
-            onChange={(e) => setRankingTour(e.target.value)}
-            className={field}
-          >
-            <option value="">Select men&apos;s or women&apos;s</option>
-            {TOUR_OPTIONS.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
-              </option>
+        <fieldset className={label}>
+          <span>Circuit</span>
+          <div className="flex items-center gap-4 py-2">
+            {CIRCUIT_OPTIONS.map((c) => (
+              <label key={c.value} className="flex items-center gap-1.5">
+                <input
+                  type="radio"
+                  name="circuit"
+                  checked={circuit === c.value}
+                  onChange={() => changeCircuit(c.value)}
+                />
+                {c.label}
+              </label>
             ))}
-          </select>
-        </label>
+          </div>
+        </fieldset>
       </div>
+
+      {circuit !== "" && (
+        <fieldset className={label}>
+          <span>Tours</span>
+          <div className="flex flex-wrap gap-3">
+            {tourOptions.map((t) => (
+              <label key={t} className="flex items-center gap-1.5 text-sm">
+                <input
+                  type="checkbox"
+                  checked={tours.includes(t)}
+                  onChange={() => toggleTour(t)}
+                />
+                {t}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
+
       <p className="-mt-2 text-xs text-gray-500">
-        Set your ranking and tour to see how far you are from each event&apos;s
+        Set your ranking and circuit to see how far you are from each event&apos;s
         cutoff on Browse.
       </p>
 
