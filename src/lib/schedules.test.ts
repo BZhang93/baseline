@@ -1,5 +1,22 @@
 import { describe, it, expect } from "vitest";
-import { haversineKm, estimateTravel } from "./schedules";
+import { haversineKm, estimateTravel, buildLegsAndScores, type LegEvent } from "./schedules";
+
+function ev(
+  startDate: string,
+  lat: number | null,
+  long: number | null,
+  w = 250,
+  prize = 100000,
+): LegEvent {
+  return {
+    city: "City",
+    country: "Country",
+    lat,
+    long,
+    startDate: new Date(startDate),
+    category: { pointsByRound: { W: w }, prizeMoneyByRound: { W: prize } },
+  };
+}
 
 describe("haversineKm", () => {
   it("is ~0 for identical points", () => {
@@ -34,5 +51,39 @@ describe("estimateTravel", () => {
     // 0 km still carries ~2h airport overhead.
     expect(estimateTravel(0).durationMinutes).toBe(120);
     expect(estimateTravel(0).costEstimate).toBe(0);
+  });
+});
+
+describe("buildLegsAndScores", () => {
+  it("creates N-1 legs and sums potential scores", () => {
+    const events = [
+      ev("2026-07-13", 38.1157, 13.3615, 250, 100000), // Palermo
+      ev("2026-07-20", 50.0755, 14.4378, 250, 100000), // Prague
+    ];
+    const built = buildLegsAndScores(events);
+    expect(built.legs).toHaveLength(1);
+    expect(built.legs[0].durationMinutes).toBeGreaterThan(0);
+    expect(built.legs[0].costEstimate).toBeGreaterThan(0);
+    expect(built.scorePoints).toBe(500);
+    expect(built.scorePrizeMoney).toBe(200000);
+    expect(built.scoreTravelTimeMin).toBe(built.legs[0].durationMinutes);
+  });
+
+  it("has no legs for a single event", () => {
+    const built = buildLegsAndScores([ev("2026-07-13", 38.1, 13.3)]);
+    expect(built.legs).toHaveLength(0);
+    expect(built.scoreTravelTimeMin).toBe(0);
+    expect(built.scorePoints).toBe(250);
+  });
+
+  it("leaves a leg's estimates null when coordinates are missing", () => {
+    const built = buildLegsAndScores([
+      ev("2026-07-13", null, null),
+      ev("2026-07-20", 50.0755, 14.4378),
+    ]);
+    expect(built.legs).toHaveLength(1);
+    expect(built.legs[0].durationMinutes).toBeNull();
+    expect(built.legs[0].costEstimate).toBeNull();
+    expect(built.scoreTravelCost).toBe(0);
   });
 });

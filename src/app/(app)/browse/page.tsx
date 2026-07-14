@@ -4,11 +4,11 @@ import {
   getBrowseData,
   getFilterOptions,
   type BrowseFilters,
-  type GapView,
   type TournamentView,
 } from "@/lib/tournaments";
 import { Tour, Surface } from "@/generated/prisma/client";
 import { formatDateRange, formatMoney, formatSurface } from "@/lib/format";
+import { GapBadge } from "../_components/gap-badge";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -33,28 +33,6 @@ function parseFilters(sp: SearchParams): BrowseFilters {
     to: str(sp.to),
     country: str(sp.country),
   };
-}
-
-function GapBadge({ gap }: { gap: GapView }) {
-  const styles: Record<GapView["status"], string> = {
-    in: "bg-green-100 text-green-800",
-    borderline: "bg-amber-100 text-amber-800",
-    out: "bg-red-100 text-red-800",
-    unknown: "bg-gray-100 text-gray-600",
-  };
-  const label =
-    gap.status === "in"
-      ? "You're in"
-      : gap.status === "borderline"
-        ? `Borderline · ${gap.spots} spots`
-        : gap.status === "out"
-          ? `${gap.spots} spots${gap.points != null ? ` · ${gap.points} pts` : ""} short`
-          : "Set ranking";
-  return (
-    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${styles[gap.status]}`}>
-      {label}
-    </span>
-  );
 }
 
 function EventCard({ t }: { t: TournamentView }) {

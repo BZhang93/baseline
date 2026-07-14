@@ -3,7 +3,13 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getCurrentSession } from "@/lib/player";
-import { createSchedule, type CreateScheduleInput } from "@/lib/schedules";
+import {
+  createSchedule,
+  renameSchedule,
+  removeEventFromSchedule,
+  deleteSchedule,
+  type CreateScheduleInput,
+} from "@/lib/schedules";
 
 // Returned string is an error message shown to the user; success redirects.
 export async function createScheduleAction(
@@ -22,5 +28,35 @@ export async function createScheduleAction(
 
   const id = await createSchedule(session.player.id, input);
   revalidatePath("/schedules");
-  redirect(`/schedules?created=${id}`);
+  redirect(`/schedules/${id}`);
+}
+
+export async function renameScheduleAction(
+  id: string,
+  name: string,
+): Promise<string | void> {
+  const session = await getCurrentSession();
+  if (!session) return "You're not signed in.";
+  if (!name.trim()) return "Name can't be empty.";
+  const ok = await renameSchedule(session.player.id, id, name.trim());
+  if (!ok) return "Schedule not found.";
+  revalidatePath(`/schedules/${id}`);
+  revalidatePath("/schedules");
+}
+
+// Bound as a form action: (id, tournamentId) with FormData appended + ignored.
+export async function removeEventAction(id: string, tournamentId: string): Promise<void> {
+  const session = await getCurrentSession();
+  if (!session) return;
+  await removeEventFromSchedule(session.player.id, id, tournamentId);
+  revalidatePath(`/schedules/${id}`);
+  revalidatePath("/schedules");
+}
+
+export async function deleteScheduleAction(id: string): Promise<void> {
+  const session = await getCurrentSession();
+  if (!session) return;
+  await deleteSchedule(session.player.id, id);
+  revalidatePath("/schedules");
+  redirect("/schedules");
 }
