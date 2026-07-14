@@ -161,12 +161,34 @@ export type RankingLookup = (
   rank: number | null | undefined,
 ) => number | null;
 
+// Builds a (tour, rank) -> points lookup from ranking rows, keyed to the latest
+// asOfDate per tour. RankingEntry is unique on (tour, rank, asOfDate) and
+// accumulates weekly snapshots; scoping to the latest snapshot per tour stops a
+// stale snapshot from silently overwriting the current one under the
+// (tour, rank) key. Pure + unit-tested; loadRankingLookup only feeds it the
+// latest rows (so this selection is a correctness safety net, not extra I/O).
+export function buildRankingLookup(
+  rows: Array<{ tour: Tour; rank: number; points: number; asOfDate: Date }>,
+): RankingLookup {
+  const latestMs = new Map<string, number>();
+  for (const r of rows) {
+    const ms = r.asOfDate.getTime();
+    const cur = latestMs.get(r.tour);
+    if (cur === undefined || ms > cur) latestMs.set(r.tour, ms);
+  }
+  const map = new Map<string, number>();
+  for (const r of rows) {
+    if (r.asOfDate.getTime() === latestMs.get(r.tour)) {
+      map.set(`${r.tour}:${r.rank}`, r.points);
+    }
+  }
+  return (tour, rank) => (rank == null ? null : (map.get(`${tour}:${rank}`) ?? null));
+}
+
 // Loads the most recent ranking snapshot per tour and returns a
-// (tour, rank) -> points lookup. RankingEntry is unique on (tour, rank,
-// asOfDate) and accumulates weekly snapshots, so we must scope to the latest
-// asOfDate per tour — otherwise the query grows unbounded and, worse, the
-// (tour, rank) map key would collide across dates (a stale snapshot could
-// silently overwrite the current one).
+// (tour, rank) -> points lookup. Only the latest snapshot's rows are fetched
+// (scoped via groupBy), so the query stays bounded as weekly snapshots
+// accumulate.
 export async function loadRankingLookup(): Promise<RankingLookup> {
   const latest = await prisma.rankingEntry.groupBy({
     by: ["tour"],
@@ -176,15 +198,13 @@ export async function loadRankingLookup(): Promise<RankingLookup> {
     .filter((l): l is typeof l & { _max: { asOfDate: Date } } => l._max.asOfDate != null)
     .map((l) => ({ tour: l.tour, asOfDate: l._max.asOfDate }));
 
-  const map = new Map<string, number>();
-  if (snapshots.length > 0) {
-    const rows = await prisma.rankingEntry.findMany({
-      where: { OR: snapshots },
-      select: { tour: true, rank: true, points: true },
-    });
-    for (const r of rows) map.set(`${r.tour}:${r.rank}`, r.points);
-  }
-  return (tour, rank) => (rank == null ? null : (map.get(`${tour}:${rank}`) ?? null));
+  if (snapshots.length === 0) return () => null;
+
+  const rows = await prisma.rankingEntry.findMany({
+    where: { OR: snapshots },
+    select: { tour: true, rank: true, points: true, asOfDate: true },
+  });
+  return buildRankingLookup(rows);
 }
 
 export interface CutoffAndGap {
