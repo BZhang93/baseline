@@ -2,13 +2,13 @@ import { prisma } from "@/lib/prisma";
 import {
   Tour,
   Surface,
-  BudgetTier,
   UnitSystem,
   Circuit,
   TransportMode,
   LodgingType,
 } from "@/generated/prisma/client";
 import { toursForCircuit, rankingTourForCircuit } from "@/lib/circuit";
+import { isCurrency } from "@/lib/currency";
 
 export interface ProfileInput {
   name: string | null;
@@ -19,7 +19,8 @@ export interface ProfileInput {
   homeBaseCity: string | null;
   homeBaseCountry: string | null;
   surfacePrefs: Surface[];
-  budgetTier: BudgetTier | null;
+  budget: number | null;
+  currency: string;
   unitSystem: UnitSystem;
   transportModes: TransportMode[];
   lodgingTypes: LodgingType[];
@@ -31,7 +32,6 @@ export interface ProfileInput {
 }
 
 const SURFACES = Object.values(Surface) as string[];
-const BUDGET_TIERS = Object.values(BudgetTier) as string[];
 const UNIT_SYSTEMS = Object.values(UnitSystem) as string[];
 const CIRCUITS = Object.values(Circuit) as string[];
 const TRANSPORT_MODES = Object.values(TransportMode) as string[];
@@ -66,8 +66,11 @@ export function validateProfile(input: ProfileInput): string | null {
   if (input.surfacePrefs.some((s) => !SURFACES.includes(s))) {
     return "Unknown surface preference.";
   }
-  if (input.budgetTier != null && !BUDGET_TIERS.includes(input.budgetTier)) {
-    return "Unknown budget tier.";
+  if (input.budget != null && (!Number.isInteger(input.budget) || input.budget < 0)) {
+    return "Budget must be a positive whole number.";
+  }
+  if (!isCurrency(input.currency)) {
+    return "Unknown currency.";
   }
   if (!UNIT_SYSTEMS.includes(input.unitSystem)) {
     return "Unknown measurement system.";
@@ -107,7 +110,8 @@ export async function updatePlayerProfile(
       homeBaseCity: input.homeBaseCity,
       homeBaseCountry: input.homeBaseCountry,
       surfacePrefs: input.surfacePrefs,
-      budgetTier: input.budgetTier,
+      budget: input.budget,
+      currency: input.currency,
       unitSystem: input.unitSystem,
       transportModes: input.transportModes,
       lodgingTypes: input.lodgingTypes,

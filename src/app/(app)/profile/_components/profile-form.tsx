@@ -4,7 +4,6 @@ import { useState, useTransition } from "react";
 import {
   Tour,
   Surface,
-  BudgetTier,
   UnitSystem,
   Circuit,
   TransportMode,
@@ -19,6 +18,7 @@ import {
   formatLodgingType,
 } from "@/lib/format";
 import { toursForCircuit } from "@/lib/circuit";
+import { CURRENCIES } from "@/lib/currency";
 import type { ProfileInput } from "@/lib/profile";
 import { updateProfileAction } from "../actions";
 
@@ -67,7 +67,8 @@ export function ProfileForm({
     // Drop any legacy Carpet pref so it can be removed on the next save.
     initial.surfacePrefs.filter((s) => s !== Surface.CARPET),
   );
-  const [budgetTier, setBudgetTier] = useState<string>(initial.budgetTier ?? "");
+  const [budget, setBudget] = useState(initial.budget?.toString() ?? "");
+  const [currency, setCurrency] = useState(initial.currency);
   const [unitSystem, setUnitSystem] = useState<UnitSystem>(initial.unitSystem);
   const [transportModes, setTransportModes] = useState<TransportMode[]>(initial.transportModes);
   const [lodgingTypes, setLodgingTypes] = useState<LodgingType[]>(initial.lodgingTypes);
@@ -154,6 +155,7 @@ export function ProfileForm({
   function save() {
     setError(null);
     setSaved(false);
+    const budgetValue = numberOrNull(budget);
     const input: ProfileInput = {
       name: name.trim() || null,
       ranking: numberOrNull(ranking),
@@ -163,7 +165,9 @@ export function ProfileForm({
       homeBaseCity: homeBaseCity.trim() || null,
       homeBaseCountry: homeBaseCountry.trim() || null,
       surfacePrefs,
-      budgetTier: (budgetTier || null) as BudgetTier | null,
+      // Rounded to a whole number (budget is an integer amount).
+      budget: budgetValue == null ? null : Math.round(budgetValue),
+      currency,
       unitSystem,
       transportModes,
       lodgingTypes,
@@ -303,20 +307,32 @@ export function ProfileForm({
 
       <div className="grid grid-cols-2 gap-3">
         <label className={label}>
-          Budget Tier
+          Budget (max cost)
+          <input
+            type="number"
+            min={0}
+            value={budget}
+            onChange={(e) => setBudget(e.target.value)}
+            className={field}
+          />
+        </label>
+        <label className={label}>
+          Currency
           <select
-            value={budgetTier}
-            onChange={(e) => setBudgetTier(e.target.value)}
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value)}
             className={field}
           >
-            <option value="">—</option>
-            {Object.values(BudgetTier).map((b) => (
-              <option key={b} value={b}>
-                {capitalize(b)}
+            {CURRENCIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
               </option>
             ))}
           </select>
         </label>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
         <label className={label}>
           Units
           <select
@@ -328,18 +344,17 @@ export function ProfileForm({
             <option value={UnitSystem.IMPERIAL}>Imperial (mi)</option>
           </select>
         </label>
+        <label className={label}>
+          Max Distance to Venue ({distanceUnit(unitSystem)})
+          <input
+            type="number"
+            min={0}
+            value={maxDistance}
+            onChange={(e) => setMaxDistance(e.target.value)}
+            className={field}
+          />
+        </label>
       </div>
-
-      <label className={label}>
-        Max Distance to Venue ({distanceUnit(unitSystem)})
-        <input
-          type="number"
-          min={0}
-          value={maxDistance}
-          onChange={(e) => setMaxDistance(e.target.value)}
-          className={field}
-        />
-      </label>
 
       <div className="mt-2 border-t border-gray-200 pt-4">
         <h2 className="text-sm font-medium">Travel &amp; Lodging</h2>
