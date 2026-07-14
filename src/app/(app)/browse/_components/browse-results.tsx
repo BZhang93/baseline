@@ -47,18 +47,18 @@ function EventCard({
           <div>{t.winnerPoints != null ? `${t.winnerPoints} pts` : "—"}</div>
         </div>
         <div>
-          <div className="text-gray-500">Prize (W)</div>
+          <div className="text-gray-500">Prize (Winner)</div>
           <div>{formatMoney(t.winnerPrize, t.currency ?? undefined)}</div>
         </div>
         <div>
-          <div className="text-gray-500">Live cutoff</div>
+          <div className="text-gray-500">Live Cutoff</div>
           <div>
             {t.liveCutoff.rank != null ? `#${t.liveCutoff.rank}` : "—"}
             {t.liveCutoff.points != null ? ` · ${t.liveCutoff.points} pts` : ""}
           </div>
         </div>
         <div>
-          <div className="text-gray-500">Last year</div>
+          <div className="text-gray-500">Last Year</div>
           <div>{t.historicalCutoff.rank != null ? `#${t.historicalCutoff.rank}` : "—"}</div>
         </div>
       </div>

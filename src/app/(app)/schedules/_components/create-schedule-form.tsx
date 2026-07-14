@@ -103,7 +103,7 @@ export function CreateScheduleForm({
       {/* Left: settings */}
       <div className="flex flex-col gap-4">
         <label className={label}>
-          Schedule name
+          Schedule Name
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -125,7 +125,7 @@ export function CreateScheduleForm({
 
         <div className="grid grid-cols-3 gap-3">
           <label className={label}>
-            Budget cap
+            Budget Cap
             <input
               type="number"
               min={0}
@@ -136,7 +136,7 @@ export function CreateScheduleForm({
             />
           </label>
           <label className={label}>
-            Max events
+            Max Events
             <input
               type="number"
               min={0}
@@ -146,7 +146,7 @@ export function CreateScheduleForm({
             />
           </label>
           <label className={label}>
-            Min rest days
+            Min Rest Days
             <input
               type="number"
               min={0}
@@ -161,7 +161,7 @@ export function CreateScheduleForm({
           <div className="flex justify-between">
             <span>Priority</span>
             <span className="text-gray-500">
-              {priority >= 60 ? "Maximise points" : priority <= 40 ? "Protect body / cost" : "Balanced"}
+              {priority >= 60 ? "Maximize points" : priority <= 40 ? "Protect body / cost" : "Balanced"}
             </span>
           </div>
           <input
@@ -173,7 +173,7 @@ export function CreateScheduleForm({
           />
           <div className="flex justify-between text-xs text-gray-400">
             <span>Protect body / cost</span>
-            <span>Maximise points</span>
+            <span>Maximize points</span>
           </div>
         </div>
 
@@ -184,7 +184,7 @@ export function CreateScheduleForm({
           disabled={isPending}
           className="w-fit rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-50"
         >
-          {isPending ? "Creating…" : "Create schedule"}
+          {isPending ? "Creating…" : "Create Schedule"}
         </button>
       </div>
 
@@ -216,7 +216,7 @@ export function CreateScheduleForm({
         )}
 
         <div className="mt-6 flex items-center justify-between">
-          <h2 className="text-sm font-medium">Available events</h2>
+          <h2 className="text-sm font-medium">Available Events</h2>
           <span className="text-xs text-gray-400">{filteredAvailable.length} shown</span>
         </div>
 

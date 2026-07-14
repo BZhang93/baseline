@@ -54,18 +54,18 @@ function EventRow({
           <div>{e.winnerPoints != null ? `${e.winnerPoints} pts` : "—"}</div>
         </div>
         <div>
-          <div className="text-gray-500">Prize (W)</div>
+          <div className="text-gray-500">Prize (Winner)</div>
           <div>{formatMoney(e.winnerPrize, e.currency ?? undefined)}</div>
         </div>
         <div>
-          <div className="text-gray-500">Live cutoff</div>
+          <div className="text-gray-500">Live Cutoff</div>
           <div>
             {e.cutoff.liveCutoff.rank != null ? `#${e.cutoff.liveCutoff.rank}` : "—"}
             {e.cutoff.liveCutoff.points != null ? ` · ${e.cutoff.liveCutoff.points} pts` : ""}
           </div>
         </div>
         <div>
-          <div className="text-gray-500">Last year</div>
+          <div className="text-gray-500">Last Year</div>
           <div>
             {e.cutoff.historicalCutoff.rank != null
               ? `#${e.cutoff.historicalCutoff.rank}`
@@ -132,19 +132,19 @@ export default async function ScheduleDetailPage({
       {/* Totals */}
       <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border border-gray-200 p-4 text-sm sm:grid-cols-4">
         <div>
-          <div className="text-gray-500">Potential pts</div>
+          <div className="text-gray-500">Potential Points</div>
           <div>{schedule.totals.points ?? "—"}</div>
         </div>
         <div>
-          <div className="text-gray-500">Potential prize</div>
+          <div className="text-gray-500">Potential Prize</div>
           <div>{formatMoney(schedule.totals.prize)}</div>
         </div>
         <div>
-          <div className="text-gray-500">Est. travel time</div>
+          <div className="text-gray-500">Est. Travel Time</div>
           <div>{formatTravelTime(schedule.totals.travelTimeMin)}</div>
         </div>
         <div>
-          <div className="text-gray-500">Est. travel cost</div>
+          <div className="text-gray-500">Est. Travel Cost</div>
           <div>{formatMoney(schedule.totals.travelCost)}</div>
         </div>
       </div>

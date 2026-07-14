@@ -19,22 +19,22 @@ function ScheduleCard({ s }: { s: ScheduleSummary }) {
           <h3 className="font-medium">{s.name}</h3>
           <span className="text-sm text-gray-500">{s.eventCount} events</span>
         </div>
-      <p className="text-sm text-gray-500">{fmtWindow(s.startDate, s.endDate)}</p>
-      <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">
-        <div>
-          <div className="text-gray-500">Potential pts</div>
-          <div>{s.potentialPoints ?? "—"}</div>
-        </div>
-        <div>
-          <div className="text-gray-500">Potential prize</div>
-          <div>{formatMoney(s.potentialPrize)}</div>
-        </div>
-        <div>
-          <div className="text-gray-500">Est. travel</div>
-          <div>{formatTravelTime(s.travelTimeMin)}</div>
-        </div>
+        <p className="text-sm text-gray-500">{fmtWindow(s.startDate, s.endDate)}</p>
+        <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">
           <div>
-            <div className="text-gray-500">Est. travel cost</div>
+            <div className="text-gray-500">Potential Points</div>
+            <div>{s.potentialPoints ?? "—"}</div>
+          </div>
+          <div>
+            <div className="text-gray-500">Potential Prize</div>
+            <div>{formatMoney(s.potentialPrize)}</div>
+          </div>
+          <div>
+            <div className="text-gray-500">Est. Travel Time</div>
+            <div>{formatTravelTime(s.travelTimeMin)}</div>
+          </div>
+          <div>
+            <div className="text-gray-500">Est. Travel Cost</div>
             <div>{formatMoney(s.travelCost)}</div>
           </div>
         </div>
@@ -56,18 +56,18 @@ export default async function SchedulesPage() {
           href="/schedules/new"
           className="rounded bg-black px-4 py-2 text-sm text-white"
         >
-          Create schedule
+          Create Schedule
         </Link>
       </div>
 
       {schedules.length === 0 ? (
         <p className="mt-6 text-gray-500">
-          No schedules yet.{" "}
+          You haven&apos;t planned any schedules yet.{" "}
           <Link href="/schedules/new" className="underline">
             Create your first
           </Link>{" "}
-          to start planning. (Potential points/prize assume you win each event;
-          the detail view + editing land in BRA-42.)
+          to start mapping out your season. Potential points and prize assume you
+          win every event.
         </p>
       ) : (
         <ul className="mt-4 grid gap-3">
