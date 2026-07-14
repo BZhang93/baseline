@@ -2,7 +2,13 @@
 
 import { useMemo, useState, useTransition } from "react";
 import type { PickerTournament } from "@/lib/schedules";
-import { formatDateRange } from "@/lib/format";
+import { formatDateRange, formatSurface } from "@/lib/format";
+import {
+  filterPickerTournaments,
+  pickerOptions,
+  EMPTY_PICKER_FILTERS,
+  type PickerFilters,
+} from "@/lib/picker-filter";
 import { createScheduleAction } from "../actions";
 
 // Priority slider (0 = protect body/cost, 100 = maximise points) → objective weights.
@@ -49,10 +55,21 @@ export function CreateScheduleForm({
         .sort((a, b) => a.startDate.getTime() - b.startDate.getTime()),
     [selectedIds, byId],
   );
+  const [filters, setFilters] = useState<PickerFilters>(EMPTY_PICKER_FILTERS);
+
+  const options = useMemo(() => pickerOptions(tournaments), [tournaments]);
   const available = useMemo(
     () => tournaments.filter((t) => !selectedIds.includes(t.id)),
     [tournaments, selectedIds],
   );
+  const filteredAvailable = useMemo(
+    () => filterPickerTournaments(available, filters),
+    [available, filters],
+  );
+
+  function setFilter(key: keyof PickerFilters, value: string) {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  }
 
   function add(id: string) {
     setSelectedIds((ids) => (ids.includes(id) ? ids : [...ids, id]));
@@ -198,9 +215,86 @@ export function CreateScheduleForm({
           </ol>
         )}
 
-        <h2 className="mt-6 text-sm font-medium">Available events</h2>
+        <div className="mt-6 flex items-center justify-between">
+          <h2 className="text-sm font-medium">Available events</h2>
+          <span className="text-xs text-gray-400">{filteredAvailable.length} shown</span>
+        </div>
+
+        <div className="mt-2 flex flex-wrap gap-2">
+          <input
+            value={filters.q}
+            onChange={(e) => setFilter("q", e.target.value)}
+            placeholder="Search"
+            className="min-w-32 flex-1 rounded border border-gray-300 px-2 py-1 text-sm"
+          />
+          <select
+            value={filters.tour}
+            onChange={(e) => setFilter("tour", e.target.value)}
+            className="rounded border border-gray-300 px-2 py-1 text-sm"
+          >
+            <option value="">All tours</option>
+            {options.tours.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </select>
+          <select
+            value={filters.surface}
+            onChange={(e) => setFilter("surface", e.target.value)}
+            className="rounded border border-gray-300 px-2 py-1 text-sm"
+          >
+            <option value="">All surfaces</option>
+            {options.surfaces.map((v) => (
+              <option key={v} value={v}>
+                {formatSurface(v)}
+              </option>
+            ))}
+          </select>
+          <select
+            value={filters.country}
+            onChange={(e) => setFilter("country", e.target.value)}
+            className="rounded border border-gray-300 px-2 py-1 text-sm"
+          >
+            <option value="">All regions</option>
+            {options.countries.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </select>
+          <input
+            type="date"
+            value={filters.from}
+            onChange={(e) => setFilter("from", e.target.value)}
+            className="rounded border border-gray-300 px-2 py-1 text-sm"
+          />
+          <input
+            type="date"
+            value={filters.to}
+            onChange={(e) => setFilter("to", e.target.value)}
+            className="rounded border border-gray-300 px-2 py-1 text-sm"
+          />
+          {(filters.q ||
+            filters.tour ||
+            filters.surface ||
+            filters.country ||
+            filters.from ||
+            filters.to) && (
+            <button
+              onClick={() => setFilters(EMPTY_PICKER_FILTERS)}
+              className="px-2 py-1 text-sm text-gray-500 underline"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+
         <ul className="mt-2 flex max-h-96 flex-col gap-2 overflow-auto pr-1">
-          {available.map((t) => (
+          {filteredAvailable.length === 0 && (
+            <li className="text-sm text-gray-500">No events match these filters.</li>
+          )}
+          {filteredAvailable.map((t) => (
             <li
               key={t.id}
               className="flex items-center justify-between rounded border border-gray-200 px-3 py-2 text-sm"
