@@ -52,7 +52,7 @@ export default async function BrowsePage({
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold">Browse tournaments</h1>
+      <h1 className="text-2xl font-semibold">Browse Tournaments</h1>
       <p className="mt-1 text-sm text-gray-500">July 2026 · {tournaments.length} events</p>
 
       <form method="get" className="mt-4 flex flex-wrap items-end gap-2">

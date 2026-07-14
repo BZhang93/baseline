@@ -93,7 +93,7 @@ export function ProfileForm({ initial }: { initial: ProfileInput }) {
           />
         </label>
         <label className={label}>
-          Ranking tour
+          Ranking Tour
           <select
             value={rankingTour}
             onChange={(e) => setRankingTour(e.target.value)}
@@ -114,7 +114,7 @@ export function ProfileForm({ initial }: { initial: ProfileInput }) {
 
       <div className="grid grid-cols-2 gap-3">
         <label className={label}>
-          Home base city
+          Home Base City
           <input
             value={homeBaseCity}
             onChange={(e) => setHomeBaseCity(e.target.value)}
@@ -122,7 +122,7 @@ export function ProfileForm({ initial }: { initial: ProfileInput }) {
           />
         </label>
         <label className={label}>
-          Nationality (codes, comma-separated)
+          Nationality
           <input
             value={nationality}
             onChange={(e) => setNationality(e.target.value)}
@@ -133,7 +133,7 @@ export function ProfileForm({ initial }: { initial: ProfileInput }) {
       </div>
 
       <fieldset className={label}>
-        <span>Surface preferences</span>
+        <span>Surface Preferences</span>
         <div className="flex flex-wrap gap-3">
           {Object.values(Surface).map((s) => (
             <label key={s} className="flex items-center gap-1.5 text-sm">
@@ -150,7 +150,7 @@ export function ProfileForm({ initial }: { initial: ProfileInput }) {
 
       <div className="grid grid-cols-2 gap-3">
         <label className={label}>
-          Budget tier
+          Budget Tier
           <select
             value={budgetTier}
             onChange={(e) => setBudgetTier(e.target.value)}
@@ -165,7 +165,7 @@ export function ProfileForm({ initial }: { initial: ProfileInput }) {
           </select>
         </label>
         <label className={label}>
-          Max distance to venue (km)
+          Max Distance to Venue (km)
           <input
             type="number"
             min={0}
@@ -177,7 +177,7 @@ export function ProfileForm({ initial }: { initial: ProfileInput }) {
       </div>
 
       <label className={label}>
-        Dietary preferences (comma-separated)
+        Dietary Preferences
         <input
           value={dietaryPrefs}
           onChange={(e) => setDietaryPrefs(e.target.value)}
@@ -187,7 +187,7 @@ export function ProfileForm({ initial }: { initial: ProfileInput }) {
       </label>
 
       <label className={label}>
-        Lodging amenities (comma-separated)
+        Lodging Amenities
         <input
           value={lodgingAmenities}
           onChange={(e) => setLodgingAmenities(e.target.value)}
@@ -204,7 +204,7 @@ export function ProfileForm({ initial }: { initial: ProfileInput }) {
         disabled={isPending}
         className="w-fit rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-50"
       >
-        {isPending ? "Saving…" : "Save profile"}
+        {isPending ? "Saving…" : "Save Profile"}
       </button>
     </div>
   );
