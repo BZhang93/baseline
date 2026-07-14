@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@/generated/prisma/client";
 import type { DataSource } from "./types";
+import { circuitForTournament } from "@/lib/circuit";
 
 export interface LoadResult {
   categories: number;
@@ -62,6 +63,7 @@ export async function loadIntoDatabase(
 
     const data = {
       tour: t.tour,
+      circuit: circuitForTournament(t.tour, t.tier),
       tier: t.tier,
       city: t.city,
       country: t.country,

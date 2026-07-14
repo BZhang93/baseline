@@ -3,9 +3,23 @@ import {
   toursForCircuit,
   rankingTourForCircuit,
   circuitForRankingTour,
+  circuitForTournament,
   resolveBrowseTours,
 } from "./circuit";
 import { Circuit, Tour } from "@/generated/prisma/enums";
+
+describe("circuitForTournament", () => {
+  it("maps tour-based circuits", () => {
+    expect(circuitForTournament(Tour.ATP, "ATP_250")).toBe(Circuit.MENS);
+    expect(circuitForTournament(Tour.CHALLENGER, "CHALLENGER_125")).toBe(Circuit.MENS);
+    expect(circuitForTournament(Tour.WTA, "WTA_500")).toBe(Circuit.WOMENS);
+  });
+  it("reads ITF gender from the tier", () => {
+    expect(circuitForTournament(Tour.ITF, "ITF_M25")).toBe(Circuit.MENS);
+    expect(circuitForTournament(Tour.ITF, "ITF_W25")).toBe(Circuit.WOMENS);
+    expect(circuitForTournament(Tour.ITF, "ITF_W15")).toBe(Circuit.WOMENS);
+  });
+});
 
 describe("toursForCircuit", () => {
   it("men's → ATP, Challenger, ITF", () => {

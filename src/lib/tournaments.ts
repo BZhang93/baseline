@@ -127,9 +127,12 @@ export async function getFilterOptions(): Promise<{
 
 export async function getBrowseData(
   filters: BrowseFilters,
-  player: Pick<Player, "ranking" | "rankingTour"> | null,
+  player: Pick<Player, "ranking" | "rankingTour" | "circuit"> | null,
 ): Promise<TournamentView[]> {
   const where: Prisma.TournamentWhereInput = {};
+  // Scope to the player's circuit so they never see the other circuit's events
+  // — in particular disambiguating ITF, which spans both men's and women's.
+  if (player?.circuit) where.circuit = player.circuit;
   if (filters.tour) where.tour = filters.tour;
   else if (filters.tours && filters.tours.length > 0) where.tour = { in: filters.tours };
   if (filters.surface) where.surface = filters.surface;
