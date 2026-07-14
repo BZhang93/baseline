@@ -63,10 +63,22 @@ describe("resolveBrowseTours", () => {
     expect(r.tours).toBeUndefined();
   });
 
-  it("falls back to circuit-scoped All tours when the player has multiple tours", () => {
+  it("scopes All tours to the player's selected tours when they play several", () => {
     const r = resolveBrowseTours({
       circuit: Circuit.MENS,
-      playerTours: [Tour.ATP, Tour.ITF],
+      playerTours: [Tour.ATP, Tour.CHALLENGER],
+      selectedTour: undefined,
+      tourExplicit: false,
+    });
+    expect(r.tour).toBeUndefined();
+    // ITF is on the circuit but the player didn't pick it — excluded.
+    expect(r.tours).toEqual([Tour.ATP, Tour.CHALLENGER]);
+  });
+
+  it("scopes All tours to the whole circuit only when the player picked no tours", () => {
+    const r = resolveBrowseTours({
+      circuit: Circuit.MENS,
+      playerTours: [],
       selectedTour: undefined,
       tourExplicit: false,
     });
@@ -78,12 +90,12 @@ describe("resolveBrowseTours", () => {
     // "All tours" explicitly picked: tourExplicit=true, selectedTour=undefined.
     const r = resolveBrowseTours({
       circuit: Circuit.MENS,
-      playerTours: [Tour.ITF],
+      playerTours: [Tour.ATP, Tour.CHALLENGER],
       selectedTour: undefined,
       tourExplicit: true,
     });
     expect(r.tour).toBeUndefined();
-    expect(r.tours).toEqual([Tour.ATP, Tour.CHALLENGER, Tour.ITF]);
+    expect(r.tours).toEqual([Tour.ATP, Tour.CHALLENGER]);
   });
 
   it("honors an explicit in-circuit selection", () => {

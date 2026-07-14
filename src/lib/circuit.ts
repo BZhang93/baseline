@@ -28,8 +28,9 @@ export function circuitForRankingTour(tour: Tour | null): Circuit | null {
 //  - `tour`: the single tour to filter by. Defaults to the player's tour when
 //    they compete on exactly one and haven't chosen one this visit; an
 //    out-of-circuit selection is dropped.
-//  - `tours`: when no single tour applies, the circuit's tours — so "All tours"
-//    still means "all of my tours", never another circuit's events.
+//  - `tours`: when no single tour applies, the player's selected tours — so
+//    "All tours" means "all of the tours I play" (their whole circuit only when
+//    they haven't picked any), never another circuit's events.
 export function resolveBrowseTours(params: {
   circuit: Circuit | null;
   playerTours: Tour[];
@@ -38,11 +39,16 @@ export function resolveBrowseTours(params: {
 }): { tour?: Tour; tours?: Tour[]; options: Tour[] } {
   const { circuit, playerTours, selectedTour, tourExplicit } = params;
   const options = circuit ? toursForCircuit(circuit) : (Object.values(Tour) as Tour[]);
+  const myTours = playerTours.filter((t) => options.includes(t));
 
   let tour = selectedTour && options.includes(selectedTour) ? selectedTour : undefined;
-  if (!tourExplicit && !tour && playerTours.length === 1) {
-    tour = playerTours[0];
+  if (!tourExplicit && !tour && myTours.length === 1) {
+    tour = myTours[0];
   }
-  const tours = !tour && circuit ? options : undefined;
+
+  let tours: Tour[] | undefined;
+  if (!tour) {
+    tours = myTours.length > 0 ? myTours : circuit ? options : undefined;
+  }
   return { tour, tours, options };
 }
