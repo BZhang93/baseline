@@ -1,6 +1,11 @@
 @import "tailwindcss";
 
+/* The app is light-mode-first. `color-scheme: light` forces the browser to
+   render the page canvas and native form controls (selects, date pickers) in
+   light mode even when the OS is set to dark — otherwise they render dark and
+   clash with the light UI. */
 :root {
+  color-scheme: light;
   --background: #ffffff;
   --foreground: #171717;
 }
@@ -12,10 +17,7 @@
   --font-mono: var(--font-geist-mono);
 }
 
-/* The app is styled light-mode-first. Until we add proper dark-mode variants,
-   render light regardless of the OS preference so components (light cards,
-   gray pills, gray borders) stay readable. */
-
+html,
 body {
   background: var(--background);
   color: var(--foreground);
