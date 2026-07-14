@@ -28,7 +28,7 @@ export default async function AppLayout({
               href="/schedules/new"
               className="rounded bg-black px-3 py-1.5 text-sm text-white"
             >
-              New schedule
+              Create schedule
             </Link>
             <span className="hidden text-sm text-gray-500 sm:inline">
               {session.email}

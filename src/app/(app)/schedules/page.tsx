@@ -9,7 +9,7 @@ export default function SchedulesPage() {
           href="/schedules/new"
           className="rounded bg-black px-4 py-2 text-sm text-white"
         >
-          New schedule
+          Create schedule
         </Link>
       </div>
       <p className="mt-4 text-gray-500">
