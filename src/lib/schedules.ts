@@ -67,6 +67,26 @@ export interface CreateScheduleInput {
   tournamentIds: string[];
 }
 
+// Parses a comma-separated `events` query param into a de-duplicated list of
+// ids, keeping only those present in `validIds` (ignores unknown/invalid ids).
+export function parseEventIdsParam(
+  param: string | undefined,
+  validIds: Iterable<string>,
+): string[] {
+  if (!param) return [];
+  const valid = new Set(validIds);
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of param.split(",")) {
+    const id = raw.trim();
+    if (id && valid.has(id) && !seen.has(id)) {
+      seen.add(id);
+      result.push(id);
+    }
+  }
+  return result;
+}
+
 // The event fields needed to build legs + score totals.
 export interface LegEvent {
   city: string;
