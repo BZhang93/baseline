@@ -8,7 +8,7 @@
 // transaction pooler.
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient, BudgetTier, Surface, Tour, TravelMode } from "../src/generated/prisma/client";
+import { PrismaClient, Surface, Tour, TravelMode } from "../src/generated/prisma/client";
 import { loadIntoDatabase } from "../src/lib/data/load";
 import { seedDataSource, AS_OF, SEASON } from "../src/lib/data/seed-source";
 
@@ -40,7 +40,8 @@ async function main() {
       homeBaseLat: 45.815,
       homeBaseLong: 15.9819,
       surfacePrefs: [Surface.CLAY, Surface.HARD],
-      budgetTier: BudgetTier.LOW,
+      budget: 6000,
+      currency: "EUR",
       dietaryPrefs: ["gluten-free"],
       maxDistanceToVenueKm: 15,
       lodgingAmenities: ["kitchen", "laundry"],

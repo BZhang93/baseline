@@ -39,12 +39,6 @@ enum Surface {
   CARPET
 }
 
-enum BudgetTier {
-  LOW
-  MEDIUM
-  HIGH
-}
-
 enum UnitSystem {
   METRIC
   IMPERIAL
@@ -213,7 +207,8 @@ model Player {
   homeBaseLong    Float?
 
   surfacePrefs Surface[]
-  budgetTier   BudgetTier?
+  budget       Int? // maximum cost, in `currency`
+  currency     String @default("USD")
   dietaryPrefs String[]
 
   unitSystem UnitSystem @default(METRIC)

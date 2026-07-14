@@ -3,7 +3,6 @@ import { validateProfile, type ProfileInput } from "./profile";
 import {
   Tour,
   Surface,
-  BudgetTier,
   UnitSystem,
   Circuit,
   TransportMode,
@@ -19,7 +18,8 @@ const base: ProfileInput = {
   homeBaseCity: "Zagreb",
   homeBaseCountry: "Croatia",
   surfacePrefs: [Surface.CLAY],
-  budgetTier: BudgetTier.LOW,
+  budget: 6000,
+  currency: "EUR",
   unitSystem: UnitSystem.METRIC,
   transportModes: [TransportMode.FLIGHT, TransportMode.TRAIN],
   lodgingTypes: [LodgingType.HOTEL, LodgingType.RESIDENCE],
@@ -46,7 +46,8 @@ describe("validateProfile", () => {
         homeBaseCity: null,
         homeBaseCountry: null,
         surfacePrefs: [],
-        budgetTier: null,
+        budget: null,
+        currency: "USD",
         unitSystem: UnitSystem.IMPERIAL,
         transportModes: [],
         lodgingTypes: [],
@@ -89,6 +90,15 @@ describe("validateProfile", () => {
     expect(validateProfile({ ...base, circuit: null, tours: [Tour.WTA] })).toMatch(
       /Choose a circuit/,
     );
+  });
+
+  it("rejects a negative or non-integer budget", () => {
+    expect(validateProfile({ ...base, budget: -100 })).toMatch(/positive whole number/);
+    expect(validateProfile({ ...base, budget: 99.5 })).toMatch(/positive whole number/);
+  });
+
+  it("rejects an unknown currency", () => {
+    expect(validateProfile({ ...base, currency: "XYZ" })).toMatch(/Unknown currency/);
   });
 
   it("rejects a negative max distance", () => {
