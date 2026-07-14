@@ -48,7 +48,9 @@ export default async function BrowsePage({
   ]);
   const tournaments = await getBrowseData(filters, session?.player ?? null);
 
-  const inputClass = "rounded border border-gray-300 px-2 py-1.5 text-sm";
+  // Fixed height so text inputs, selects, and date pickers line up (native
+  // selects otherwise render a different height).
+  const inputClass = "h-9 rounded border border-gray-300 px-2 text-sm";
 
   return (
     <div>
@@ -88,10 +90,13 @@ export default async function BrowsePage({
         </select>
         <input type="date" name="from" defaultValue={filters.from ?? ""} className={inputClass} />
         <input type="date" name="to" defaultValue={filters.to ?? ""} className={inputClass} />
-        <button type="submit" className="rounded bg-black px-3 py-1.5 text-sm text-white">
+        <button type="submit" className="h-9 rounded bg-black px-3 text-sm text-white">
           Update
         </button>
-        <Link href="/browse" className="px-2 py-1.5 text-sm text-gray-500 underline">
+        <Link
+          href="/browse"
+          className="flex h-9 items-center px-2 text-sm text-gray-500 underline"
+        >
           Clear
         </Link>
       </form>
