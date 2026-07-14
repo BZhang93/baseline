@@ -21,3 +21,34 @@ export function circuitForRankingTour(tour: Tour | null): Circuit | null {
   if (tour === Tour.WTA) return Circuit.WOMENS;
   return null;
 }
+
+// Resolves the Browse page's Tour filter from the player's profile:
+//  - `options`: the tours shown in the dropdown (the player's circuit, or all
+//    tours when there's no circuit / no player).
+//  - `tour`: the single tour to filter by. Defaults to the player's tour when
+//    they compete on exactly one and haven't chosen one this visit; an
+//    out-of-circuit selection is dropped.
+//  - `tours`: when no single tour applies, the player's selected tours — so
+//    "All tours" means "all of the tours I play" (their whole circuit only when
+//    they haven't picked any), never another circuit's events.
+export function resolveBrowseTours(params: {
+  circuit: Circuit | null;
+  playerTours: Tour[];
+  selectedTour: Tour | undefined;
+  tourExplicit: boolean;
+}): { tour?: Tour; tours?: Tour[]; options: Tour[] } {
+  const { circuit, playerTours, selectedTour, tourExplicit } = params;
+  const options = circuit ? toursForCircuit(circuit) : (Object.values(Tour) as Tour[]);
+  const myTours = playerTours.filter((t) => options.includes(t));
+
+  let tour = selectedTour && options.includes(selectedTour) ? selectedTour : undefined;
+  if (!tourExplicit && !tour && myTours.length === 1) {
+    tour = myTours[0];
+  }
+
+  let tours: Tour[] | undefined;
+  if (!tour) {
+    tours = myTours.length > 0 ? myTours : circuit ? options : undefined;
+  }
+  return { tour, tours, options };
+}
