@@ -12,7 +12,7 @@
 // (prize money would otherwise swamp everything).
 
 import { roundValue } from "@/lib/round-values";
-import { haversineKm, estimateTravel, type Coord } from "@/lib/schedules";
+import { haversineKm, estimateTravel, type Coord } from "@/lib/travel";
 import type { AcceptanceStatus } from "@/lib/tournaments";
 
 // Result rounds, earliest exit → title. A player's "result" is the round they
@@ -150,6 +150,47 @@ function legBetween(a: CandidateEvent, b: CandidateEvent): { minutes: number; co
   return { minutes: est.durationMinutes, cost: est.costEstimate };
 }
 
+// Expected points/prize for one event given the player (round-reached proxy).
+export function eventExpectedValue(c: CandidateEvent): {
+  expectedPoints: number;
+  expectedPrize: number;
+  resultLabel: string | null;
+} {
+  const winProb = matchWinProbability(c.playerRankForEvent, c.fieldRefRank);
+  return {
+    expectedPoints: expectedRoundValue(c.pointsByRound, winProb),
+    expectedPrize: expectedRoundValue(c.prizeMoneyByRound, winProb),
+    resultLabel: expectedResultLabel(c.pointsByRound, winProb),
+  };
+}
+
+// Raw totals for a fixed, chronological selection — used for live re-scoring in
+// the UI (no optimization, just the expected-value sums + estimated legs).
+export function scheduleTotals(ordered: CandidateEvent[]): OptimizedSchedule["totals"] {
+  let travelTimeMin = 0;
+  let travelCost = 0;
+  for (let i = 1; i < ordered.length; i++) {
+    const leg = legBetween(ordered[i - 1], ordered[i]);
+    if (leg) {
+      travelTimeMin += leg.minutes;
+      travelCost += leg.cost;
+    }
+  }
+  let expectedPoints = 0;
+  let expectedPrize = 0;
+  for (const c of ordered) {
+    const v = eventExpectedValue(c);
+    expectedPoints += v.expectedPoints;
+    expectedPrize += v.expectedPrize;
+  }
+  return {
+    expectedPoints: Math.round(expectedPoints),
+    expectedPrize: Math.round(expectedPrize),
+    travelTimeMin,
+    travelCost,
+  };
+}
+
 // Selects and orders the events maximizing the weighted objective, subject to
 // the constraints. Exact search over date-sorted candidates (each event
 // weekly/non-overlapping, so feasible chains are short); the PRD sanctions
@@ -167,20 +208,13 @@ export function optimizeSchedule(
     .sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
 
   // Per-event expected value (round-reached proxy).
-  const ev = new Map<string, { points: number; prize: number; winProb: number }>();
-  for (const c of pool) {
-    const winProb = matchWinProbability(c.playerRankForEvent, c.fieldRefRank);
-    ev.set(c.id, {
-      points: expectedRoundValue(c.pointsByRound, winProb),
-      prize: expectedRoundValue(c.prizeMoneyByRound, winProb),
-      winProb,
-    });
-  }
+  const ev = new Map<string, ReturnType<typeof eventExpectedValue>>();
+  for (const c of pool) ev.set(c.id, eventExpectedValue(c));
 
   // Pool-level scales so the weights compare across dimensions. Max single-event
   // value and max single leg; guarded against divide-by-zero.
-  const pScale = Math.max(1, ...pool.map((c) => ev.get(c.id)!.points));
-  const mScale = Math.max(1, ...pool.map((c) => ev.get(c.id)!.prize));
+  const pScale = Math.max(1, ...pool.map((c) => ev.get(c.id)!.expectedPoints));
+  const mScale = Math.max(1, ...pool.map((c) => ev.get(c.id)!.expectedPrize));
   let tScale = 1;
   let cScale = 1;
   for (let i = 0; i < pool.length; i++) {
@@ -232,8 +266,8 @@ export function optimizeSchedule(
 
       const evE = ev.get(e.id)!;
       const add =
-        w.points * (evE.points / pScale) +
-        w.money * (evE.prize / mScale) -
+        w.points * (evE.expectedPoints / pScale) +
+        w.money * (evE.expectedPrize / mScale) -
         w.travelTime * (leg.minutes / tScale) -
         w.travelCost * (leg.cost / cScale);
 
@@ -245,34 +279,20 @@ export function optimizeSchedule(
   // Materialize the chosen schedule with raw totals + rationale.
   const byId = new Map(pool.map((c) => [c.id, c]));
   const chosen = best.ids.map((id) => byId.get(id)!);
-  let travelTimeMin = 0;
-  let travelCost = 0;
-  for (let i = 1; i < chosen.length; i++) {
-    const leg = legBetween(chosen[i - 1], chosen[i]);
-    if (leg) {
-      travelTimeMin += leg.minutes;
-      travelCost += leg.cost;
-    }
-  }
   const events: ScheduledEvent[] = chosen.map((c) => {
     const evE = ev.get(c.id)!;
     return {
       id: c.id,
-      expectedPoints: Math.round(evE.points),
-      expectedPrize: Math.round(evE.prize),
+      expectedPoints: Math.round(evE.expectedPoints),
+      expectedPrize: Math.round(evE.expectedPrize),
       acceptance: c.acceptance,
-      resultLabel: expectedResultLabel(c.pointsByRound, evE.winProb),
+      resultLabel: evE.resultLabel,
     };
   });
 
   return {
     events,
-    totals: {
-      expectedPoints: events.reduce((s, e) => s + e.expectedPoints, 0),
-      expectedPrize: events.reduce((s, e) => s + e.expectedPrize, 0),
-      travelTimeMin,
-      travelCost,
-    },
+    totals: scheduleTotals(chosen),
     score: best.score === -Infinity ? 0 : best.score,
   };
 }

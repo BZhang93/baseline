@@ -22,10 +22,10 @@ export const EMPTY_PICKER_FILTERS: PickerFilters = {
   to: "",
 };
 
-export function filterPickerTournaments(
-  tournaments: PickerTournament[],
+export function filterPickerTournaments<T extends PickerTournament>(
+  tournaments: T[],
   f: PickerFilters,
-): PickerTournament[] {
+): T[] {
   const q = f.q.trim().toLowerCase();
   const from = f.from ? new Date(f.from) : null;
   const to = f.to ? new Date(f.to) : null;
