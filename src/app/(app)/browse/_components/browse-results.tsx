@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { TournamentView } from "@/lib/tournaments";
-import { formatDateRange, formatMoney, formatSurface } from "@/lib/format";
+import { formatDateRange, formatMoney, formatSurface, formatTour } from "@/lib/format";
+import { lodgingSearchUrl } from "@/lib/booking-links";
 import { GapBadge } from "../../_components/gap-badge";
 
 function EventCard({
@@ -31,7 +32,7 @@ function EventCard({
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2 text-xs">
-        <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">{t.tour}</span>
+        <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">{formatTour(t.tour)}</span>
         <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">
           {t.tier.replaceAll("_", " ")}
         </span>
@@ -47,20 +48,31 @@ function EventCard({
           <div>{t.winnerPoints != null ? `${t.winnerPoints} pts` : "—"}</div>
         </div>
         <div>
-          <div className="text-gray-500">Prize (W)</div>
+          <div className="text-gray-500">Prize (Winner)</div>
           <div>{formatMoney(t.winnerPrize, t.currency ?? undefined)}</div>
         </div>
         <div>
-          <div className="text-gray-500">Live cutoff</div>
+          <div className="text-gray-500">Live Cutoff</div>
           <div>
             {t.liveCutoff.rank != null ? `#${t.liveCutoff.rank}` : "—"}
             {t.liveCutoff.points != null ? ` · ${t.liveCutoff.points} pts` : ""}
           </div>
         </div>
         <div>
-          <div className="text-gray-500">Last year</div>
+          <div className="text-gray-500">Last Year</div>
           <div>{t.historicalCutoff.rank != null ? `#${t.historicalCutoff.rank}` : "—"}</div>
         </div>
+      </div>
+
+      <div className="mt-3">
+        <a
+          href={lodgingSearchUrl(t.city, t.country, t.startDate)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
+        >
+          Find stays ↗
+        </a>
       </div>
     </li>
   );

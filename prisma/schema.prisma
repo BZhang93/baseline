@@ -39,10 +39,33 @@ enum Surface {
   CARPET
 }
 
-enum BudgetTier {
-  LOW
-  MEDIUM
-  HIGH
+enum UnitSystem {
+  METRIC
+  IMPERIAL
+}
+
+/// The player's circuit — men's or women's tennis. Determines which tours and
+/// ranking list apply.
+enum Circuit {
+  MENS
+  WOMENS
+}
+
+enum TransportMode {
+  FLIGHT
+  TRAIN
+  BUS
+  CAR
+  RIDESHARE
+}
+
+enum LodgingType {
+  HOTEL
+  RESIDENCE
+  APARTMENT
+  HOSTEL
+  HOST_HOUSING
+  BNB
 }
 
 /// How a travel leg between two events is made.
@@ -88,6 +111,8 @@ model Tournament {
   id          String  @id @default(cuid())
   name        String
   tour        Tour
+  /// Men's or women's. Derived from tour (+ tier for ITF, which covers both).
+  circuit     Circuit
   /// Matches a TournamentCategory.tier; points/prize are read from the category.
   tier        String
   edition     Int // year, e.g. 2026
@@ -171,17 +196,33 @@ model Player {
 
   name        String?
   ranking     Int?
+  circuit     Circuit?
+  /// Tours the player competes on (filtered by circuit).
+  tours       Tour[]
+  /// Derived from `circuit` (Men's → ATP, Women's → WTA); used for the cutoff gap.
   rankingTour Tour?
   nationality String[] // ISO country codes
 
-  homeBaseCity String?
-  homeBaseLat  Float?
-  homeBaseLong Float?
+  homeBaseCity    String?
+  homeBaseCountry String?
+  homeBaseLat     Float?
+  homeBaseLong    Float?
 
   surfacePrefs Surface[]
-  budgetTier   BudgetTier?
+  budget       Int? // maximum cost, in `currency`
+  currency     String @default("USD")
   dietaryPrefs String[]
 
+  unitSystem UnitSystem @default(METRIC)
+
+  // Travel & lodging preferences (BRA-53).
+  transportModes TransportMode[] // ordered = ranked preference
+  lodgingTypes   LodgingType[]
+  travelSpend    Int             @default(50) // 0 = save, 100 = spend
+  lodgingSpend   Int             @default(50)
+
+  // Always stored in km; the UI converts for display when the player uses
+  // imperial units.
   maxDistanceToVenueKm Int?
   lodgingAmenities     String[]
 

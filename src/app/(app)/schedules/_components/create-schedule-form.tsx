@@ -2,7 +2,13 @@
 
 import { useMemo, useState, useTransition } from "react";
 import type { PickerTournament } from "@/lib/schedules";
-import { formatDateRange } from "@/lib/format";
+import { formatDateRange, formatSurface, formatTour } from "@/lib/format";
+import {
+  filterPickerTournaments,
+  pickerOptions,
+  EMPTY_PICKER_FILTERS,
+  type PickerFilters,
+} from "@/lib/picker-filter";
 import { createScheduleAction } from "../actions";
 
 // Priority slider (0 = protect body/cost, 100 = maximise points) → objective weights.
@@ -49,10 +55,21 @@ export function CreateScheduleForm({
         .sort((a, b) => a.startDate.getTime() - b.startDate.getTime()),
     [selectedIds, byId],
   );
+  const [filters, setFilters] = useState<PickerFilters>(EMPTY_PICKER_FILTERS);
+
+  const options = useMemo(() => pickerOptions(tournaments), [tournaments]);
   const available = useMemo(
     () => tournaments.filter((t) => !selectedIds.includes(t.id)),
     [tournaments, selectedIds],
   );
+  const filteredAvailable = useMemo(
+    () => filterPickerTournaments(available, filters),
+    [available, filters],
+  );
+
+  function setFilter(key: keyof PickerFilters, value: string) {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  }
 
   function add(id: string) {
     setSelectedIds((ids) => (ids.includes(id) ? ids : [...ids, id]));
@@ -86,7 +103,7 @@ export function CreateScheduleForm({
       {/* Left: settings */}
       <div className="flex flex-col gap-4">
         <label className={label}>
-          Schedule name
+          Schedule Name
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -108,7 +125,7 @@ export function CreateScheduleForm({
 
         <div className="grid grid-cols-3 gap-3">
           <label className={label}>
-            Budget cap
+            Budget Cap
             <input
               type="number"
               min={0}
@@ -119,7 +136,7 @@ export function CreateScheduleForm({
             />
           </label>
           <label className={label}>
-            Max events
+            Max Events
             <input
               type="number"
               min={0}
@@ -129,7 +146,7 @@ export function CreateScheduleForm({
             />
           </label>
           <label className={label}>
-            Min rest days
+            Min Rest Days
             <input
               type="number"
               min={0}
@@ -144,7 +161,7 @@ export function CreateScheduleForm({
           <div className="flex justify-between">
             <span>Priority</span>
             <span className="text-gray-500">
-              {priority >= 60 ? "Maximise points" : priority <= 40 ? "Protect body / cost" : "Balanced"}
+              {priority >= 60 ? "Maximize points" : priority <= 40 ? "Protect body / cost" : "Balanced"}
             </span>
           </div>
           <input
@@ -156,7 +173,7 @@ export function CreateScheduleForm({
           />
           <div className="flex justify-between text-xs text-gray-400">
             <span>Protect body / cost</span>
-            <span>Maximise points</span>
+            <span>Maximize points</span>
           </div>
         </div>
 
@@ -167,7 +184,7 @@ export function CreateScheduleForm({
           disabled={isPending}
           className="w-fit rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-50"
         >
-          {isPending ? "Creating…" : "Create schedule"}
+          {isPending ? "Creating…" : "Create Schedule"}
         </button>
       </div>
 
@@ -198,9 +215,86 @@ export function CreateScheduleForm({
           </ol>
         )}
 
-        <h2 className="mt-6 text-sm font-medium">Available events</h2>
+        <div className="mt-6 flex items-center justify-between">
+          <h2 className="text-sm font-medium">Available Events</h2>
+          <span className="text-xs text-gray-400">{filteredAvailable.length} shown</span>
+        </div>
+
+        <div className="mt-2 flex flex-wrap gap-2">
+          <input
+            value={filters.q}
+            onChange={(e) => setFilter("q", e.target.value)}
+            placeholder="Search"
+            className="min-w-32 flex-1 rounded border border-gray-300 px-2 py-1 text-sm"
+          />
+          <select
+            value={filters.tour}
+            onChange={(e) => setFilter("tour", e.target.value)}
+            className="rounded border border-gray-300 px-2 py-1 text-sm"
+          >
+            <option value="">All tours</option>
+            {options.tours.map((v) => (
+              <option key={v} value={v}>
+                {formatTour(v)}
+              </option>
+            ))}
+          </select>
+          <select
+            value={filters.surface}
+            onChange={(e) => setFilter("surface", e.target.value)}
+            className="rounded border border-gray-300 px-2 py-1 text-sm"
+          >
+            <option value="">All surfaces</option>
+            {options.surfaces.map((v) => (
+              <option key={v} value={v}>
+                {formatSurface(v)}
+              </option>
+            ))}
+          </select>
+          <select
+            value={filters.country}
+            onChange={(e) => setFilter("country", e.target.value)}
+            className="rounded border border-gray-300 px-2 py-1 text-sm"
+          >
+            <option value="">All regions</option>
+            {options.countries.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </select>
+          <input
+            type="date"
+            value={filters.from}
+            onChange={(e) => setFilter("from", e.target.value)}
+            className="rounded border border-gray-300 px-2 py-1 text-sm"
+          />
+          <input
+            type="date"
+            value={filters.to}
+            onChange={(e) => setFilter("to", e.target.value)}
+            className="rounded border border-gray-300 px-2 py-1 text-sm"
+          />
+          {(filters.q ||
+            filters.tour ||
+            filters.surface ||
+            filters.country ||
+            filters.from ||
+            filters.to) && (
+            <button
+              onClick={() => setFilters(EMPTY_PICKER_FILTERS)}
+              className="px-2 py-1 text-sm text-gray-500 underline"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+
         <ul className="mt-2 flex max-h-96 flex-col gap-2 overflow-auto pr-1">
-          {available.map((t) => (
+          {filteredAvailable.length === 0 && (
+            <li className="text-sm text-gray-500">No events match these filters.</li>
+          )}
+          {filteredAvailable.map((t) => (
             <li
               key={t.id}
               className="flex items-center justify-between rounded border border-gray-200 px-3 py-2 text-sm"
@@ -208,7 +302,7 @@ export function CreateScheduleForm({
               <span>
                 {t.name}{" "}
                 <span className="text-gray-500">
-                  · {t.city}, {t.country} · {formatDateRange(t.startDate, t.endDate)} · {t.tour}
+                  · {t.city}, {t.country} · {formatDateRange(t.startDate, t.endDate)} · {formatTour(t.tour)}
                 </span>
               </span>
               <button

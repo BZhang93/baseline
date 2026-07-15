@@ -1,10 +1,15 @@
 import { prisma } from "@/lib/prisma";
-import type { Tour, Surface, Player } from "@/generated/prisma/client";
+import type { Tour, Surface, Player, Circuit } from "@/generated/prisma/client";
 import {
   loadRankingLookup,
   buildCutoffAndGap,
   type CutoffAndGap,
 } from "@/lib/tournaments";
+import { roundValue } from "@/lib/round-values";
+
+// The winner ("W") value of a points/prize-by-round blob, treated as 0 when
+// absent so it can be summed across a schedule's events.
+const winnerPoints = (json: unknown): number => roundValue(json, "W") ?? 0;
 
 // ---------------------------------------------------------------------------
 // Pure helpers (unit-tested; no DB)
@@ -39,14 +44,6 @@ export function estimateTravel(distanceKm: number): {
     durationMinutes: Math.round((distanceKm / 800) * 60 + 120),
     costEstimate: Math.round(distanceKm * 0.15),
   };
-}
-
-function winnerValue(json: unknown): number {
-  if (json && typeof json === "object" && "W" in (json as Record<string, unknown>)) {
-    const v = (json as Record<string, unknown>).W;
-    return typeof v === "number" ? v : 0;
-  }
-  return 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -156,8 +153,8 @@ export function buildLegsAndScores(events: LegEvent[]): LegsAndScores {
 
   return {
     legs,
-    scorePoints: events.reduce((s, t) => s + winnerValue(t.category?.pointsByRound), 0),
-    scorePrizeMoney: events.reduce((s, t) => s + winnerValue(t.category?.prizeMoneyByRound), 0),
+    scorePoints: events.reduce((s, t) => s + winnerPoints(t.category?.pointsByRound), 0),
+    scorePrizeMoney: events.reduce((s, t) => s + winnerPoints(t.category?.prizeMoneyByRound), 0),
     scoreTravelTimeMin: travelTimeMin,
     scoreTravelCost: travelCost,
   };
@@ -230,8 +227,13 @@ export interface PickerTournament {
 }
 
 // Minimal tournament list for the create-schedule event picker.
-export async function getTournamentsForPicker(): Promise<PickerTournament[]> {
+// Scoped to the player's circuit so a men's player can't add women's events
+// (and vice-versa); no circuit / logged-out lists everything.
+export async function getTournamentsForPicker(
+  circuit: Circuit | null,
+): Promise<PickerTournament[]> {
   return prisma.tournament.findMany({
+    where: circuit ? { circuit } : undefined,
     select: {
       id: true,
       name: true,
@@ -341,8 +343,8 @@ export async function getScheduleDetail(
       country: t.country,
       startDate: t.startDate,
       endDate: t.endDate,
-      winnerPoints: t.category ? winnerValue(t.category.pointsByRound) : null,
-      winnerPrize: t.category ? winnerValue(t.category.prizeMoneyByRound) : null,
+      winnerPoints: roundValue(t.category?.pointsByRound, "W"),
+      winnerPrize: roundValue(t.category?.prizeMoneyByRound, "W"),
       currency: t.category?.currency ?? null,
       cutoff: buildCutoffAndGap(t.tour, t.cutoff, pointsAt, player),
     }));

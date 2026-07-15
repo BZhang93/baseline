@@ -3,10 +3,12 @@ import { getCurrentSession } from "@/lib/player";
 import {
   getBrowseData,
   getFilterOptions,
+  resolveBrowseDates,
   type BrowseFilters,
 } from "@/lib/tournaments";
 import { Tour, Surface } from "@/generated/prisma/client";
-import { formatSurface } from "@/lib/format";
+import { resolveBrowseTours } from "@/lib/circuit";
+import { formatSurface, formatTour } from "@/lib/format";
 import { BrowseResults } from "./_components/browse-results";
 
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -46,13 +48,39 @@ export default async function BrowsePage({
     getCurrentSession(),
     getFilterOptions(),
   ]);
-  const tournaments = await getBrowseData(filters, session?.player ?? null);
+  const player = session?.player ?? null;
 
-  const inputClass = "rounded border border-gray-300 px-2 py-1.5 text-sm";
+  // Personalize the Tour filter to the player's circuit and tours.
+  const {
+    tour,
+    tours,
+    options: circuitTours,
+  } = resolveBrowseTours({
+    circuit: player?.circuit ?? null,
+    playerTours: player?.tours ?? [],
+    selectedTour: filters.tour,
+    tourExplicit: sp.tour !== undefined,
+  });
+  filters.tour = tour;
+  filters.tours = tours;
+
+  // Default the date window to today → year-end; an absent param (fresh visit
+  // or Clear) falls back to the default, a cleared field means no bound.
+  const rawFrom = Array.isArray(sp.from) ? sp.from[0] : sp.from;
+  const rawTo = Array.isArray(sp.to) ? sp.to[0] : sp.to;
+  const { from, to } = resolveBrowseDates(rawFrom, rawTo, new Date());
+  filters.from = from;
+  filters.to = to;
+
+  const tournaments = await getBrowseData(filters, player);
+
+  // Fixed height so text inputs, selects, and date pickers line up (native
+  // selects otherwise render a different height).
+  const inputClass = "h-9 rounded border border-gray-300 px-2 text-sm";
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold">Browse tournaments</h1>
+      <h1 className="text-2xl font-semibold">Browse Tournaments</h1>
       <p className="mt-1 text-sm text-gray-500">July 2026 · {tournaments.length} events</p>
 
       <form method="get" className="mt-4 flex flex-wrap items-end gap-2">
@@ -64,9 +92,9 @@ export default async function BrowsePage({
         />
         <select name="tour" defaultValue={filters.tour ?? ""} className={inputClass}>
           <option value="">All tours</option>
-          {Object.values(Tour).map((v) => (
+          {circuitTours.map((v) => (
             <option key={v} value={v}>
-              {v}
+              {formatTour(v)}
             </option>
           ))}
         </select>
@@ -88,10 +116,13 @@ export default async function BrowsePage({
         </select>
         <input type="date" name="from" defaultValue={filters.from ?? ""} className={inputClass} />
         <input type="date" name="to" defaultValue={filters.to ?? ""} className={inputClass} />
-        <button type="submit" className="rounded bg-black px-3 py-1.5 text-sm text-white">
+        <button type="submit" className="h-9 rounded bg-black px-3 text-sm text-white">
           Update
         </button>
-        <Link href="/browse" className="px-2 py-1.5 text-sm text-gray-500 underline">
+        <Link
+          href="/browse"
+          className="flex h-9 items-center px-2 text-sm text-gray-500 underline"
+        >
           Clear
         </Link>
       </form>

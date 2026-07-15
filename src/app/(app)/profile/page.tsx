@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentSession } from "@/lib/player";
+import { circuitForRankingTour } from "@/lib/circuit";
 import { ProfileForm } from "./_components/profile-form";
 
 export default async function ProfilePage() {
@@ -11,19 +12,27 @@ export default async function ProfilePage() {
     <div>
       <h1 className="text-2xl font-semibold">Profile</h1>
       <p className="mt-1 text-sm text-gray-500">
-        Signed in as {session.email}. Your ranking and preferences personalise
-        Browse and your schedules.
+        Your ranking and preferences personalize Browse and your schedules.
       </p>
 
       <ProfileForm
+        email={session.email}
         initial={{
           name: p.name,
           ranking: p.ranking,
-          rankingTour: p.rankingTour,
+          circuit: p.circuit ?? circuitForRankingTour(p.rankingTour),
+          tours: p.tours,
           nationality: p.nationality,
           homeBaseCity: p.homeBaseCity,
+          homeBaseCountry: p.homeBaseCountry,
           surfacePrefs: p.surfacePrefs,
-          budgetTier: p.budgetTier,
+          budget: p.budget,
+          currency: p.currency,
+          unitSystem: p.unitSystem,
+          transportModes: p.transportModes,
+          lodgingTypes: p.lodgingTypes,
+          travelSpend: p.travelSpend,
+          lodgingSpend: p.lodgingSpend,
           dietaryPrefs: p.dietaryPrefs,
           maxDistanceToVenueKm: p.maxDistanceToVenueKm,
           lodgingAmenities: p.lodgingAmenities,

@@ -1,12 +1,27 @@
 "use client";
 
 import { useState, useTransition } from "react";
-// Import enums from the client-safe generated entry (not "/client", which pulls
-// server-only runtime into the browser bundle).
-import { Tour, Surface, BudgetTier } from "@/generated/prisma/enums";
-import { formatSurface, capitalize } from "@/lib/format";
+import {
+  Tour,
+  Surface,
+  UnitSystem,
+  Circuit,
+  TransportMode,
+  LodgingType,
+} from "@/generated/prisma/enums";
+import {
+  capitalize,
+  kmToMi,
+  miToKm,
+  formatTour,
+  formatTransportMode,
+  formatLodgingType,
+} from "@/lib/format";
+import { toursForCircuit } from "@/lib/circuit";
+import { CURRENCIES } from "@/lib/currency";
 import type { ProfileInput } from "@/lib/profile";
 import { updateProfileAction } from "../actions";
+import { RankedList } from "./ranked-list";
 
 function csv(values: string[]): string {
   return values.join(", ");
@@ -23,20 +38,53 @@ function numberOrNull(v: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-const RANKING_TOURS = [Tour.ATP, Tour.WTA] as const;
+const CIRCUIT_OPTIONS: { value: Circuit; label: string }[] = [
+  { value: Circuit.MENS, label: "Men's" },
+  { value: Circuit.WOMENS, label: "Women's" },
+];
 
-export function ProfileForm({ initial }: { initial: ProfileInput }) {
+// Carpet is excluded — no current events use it.
+const SURFACE_OPTIONS = Object.values(Surface).filter((s) => s !== Surface.CARPET);
+const ALL_TRANSPORT = Object.values(TransportMode);
+const ALL_LODGING = Object.values(LodgingType);
+
+const distanceUnit = (u: UnitSystem) => (u === UnitSystem.IMPERIAL ? "mi" : "km");
+
+export function ProfileForm({
+  initial,
+  email,
+}: {
+  initial: ProfileInput;
+  email: string | null;
+}) {
   const [name, setName] = useState(initial.name ?? "");
   const [ranking, setRanking] = useState(initial.ranking?.toString() ?? "");
-  const [rankingTour, setRankingTour] = useState<string>(initial.rankingTour ?? "");
+  const [circuit, setCircuit] = useState<Circuit | "">(initial.circuit ?? "");
+  const [tours, setTours] = useState<Tour[]>(initial.tours);
   const [nationality, setNationality] = useState(csv(initial.nationality));
   const [homeBaseCity, setHomeBaseCity] = useState(initial.homeBaseCity ?? "");
-  const [surfacePrefs, setSurfacePrefs] = useState<Surface[]>(initial.surfacePrefs);
-  const [budgetTier, setBudgetTier] = useState<string>(initial.budgetTier ?? "");
-  const [dietaryPrefs, setDietaryPrefs] = useState(csv(initial.dietaryPrefs));
-  const [maxDistance, setMaxDistance] = useState(
-    initial.maxDistanceToVenueKm?.toString() ?? "",
+  const [homeBaseCountry, setHomeBaseCountry] = useState(initial.homeBaseCountry ?? "");
+  const [surfacePrefs, setSurfacePrefs] = useState<Surface[]>(
+    // Drop any legacy Carpet pref so it can be removed on the next save.
+    initial.surfacePrefs.filter((s) => s !== Surface.CARPET),
   );
+  const [budget, setBudget] = useState(initial.budget?.toString() ?? "");
+  const [currency, setCurrency] = useState(initial.currency);
+  const [unitSystem, setUnitSystem] = useState<UnitSystem>(initial.unitSystem);
+  const [transportModes, setTransportModes] = useState<TransportMode[]>(initial.transportModes);
+  const [lodgingTypes, setLodgingTypes] = useState<LodgingType[]>(initial.lodgingTypes);
+  const [travelSpend, setTravelSpend] = useState(initial.travelSpend);
+  const [lodgingSpend, setLodgingSpend] = useState(initial.lodgingSpend);
+  const [dietaryPrefs, setDietaryPrefs] = useState(csv(initial.dietaryPrefs));
+  // Displayed in the player's current unit; converted to km on save.
+  const [maxDistance, setMaxDistance] = useState(() => {
+    if (initial.maxDistanceToVenueKm == null) return "";
+    const v =
+      initial.unitSystem === UnitSystem.IMPERIAL
+        ? Math.round(kmToMi(initial.maxDistanceToVenueKm))
+        : initial.maxDistanceToVenueKm;
+    return v.toString();
+  });
   const [lodgingAmenities, setLodgingAmenities] = useState(csv(initial.lodgingAmenities));
 
   const [error, setError] = useState<string | null>(null);
@@ -49,19 +97,63 @@ export function ProfileForm({ initial }: { initial: ProfileInput }) {
     );
   }
 
+  // Changing circuit repopulates the tour options; prune any now-invalid picks.
+  function changeCircuit(next: Circuit) {
+    const allowed = new Set(toursForCircuit(next));
+    setTours((prev) => prev.filter((t) => allowed.has(t)));
+    setCircuit(next);
+  }
+
+  function toggleTour(t: Tour) {
+    setTours((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
+  }
+
+  const tourOptions = circuit === "" ? [] : toursForCircuit(circuit);
+
+  // Switching units converts the current max-distance value once, so the number
+  // keeps meaning the same real-world distance.
+  function changeUnit(next: UnitSystem) {
+    if (next !== unitSystem && maxDistance.trim() !== "") {
+      const n = Number(maxDistance);
+      if (Number.isFinite(n)) {
+        const km = unitSystem === UnitSystem.IMPERIAL ? miToKm(n) : n;
+        const converted = next === UnitSystem.IMPERIAL ? kmToMi(km) : km;
+        setMaxDistance(String(Math.round(converted)));
+      }
+    }
+    setUnitSystem(next);
+  }
+
+  function maxDistanceKm(): number | null {
+    const n = numberOrNull(maxDistance);
+    if (n == null) return null;
+    // Stored as an integer number of km.
+    return Math.round(unitSystem === UnitSystem.IMPERIAL ? miToKm(n) : n);
+  }
+
   function save() {
     setError(null);
     setSaved(false);
+    const budgetValue = numberOrNull(budget);
     const input: ProfileInput = {
       name: name.trim() || null,
       ranking: numberOrNull(ranking),
-      rankingTour: (rankingTour || null) as Tour | null,
+      circuit: (circuit || null) as Circuit | null,
+      tours,
       nationality: parseCsv(nationality),
       homeBaseCity: homeBaseCity.trim() || null,
+      homeBaseCountry: homeBaseCountry.trim() || null,
       surfacePrefs,
-      budgetTier: (budgetTier || null) as BudgetTier | null,
+      // Rounded to a whole number (budget is an integer amount).
+      budget: budgetValue == null ? null : Math.round(budgetValue),
+      currency,
+      unitSystem,
+      transportModes,
+      lodgingTypes,
+      travelSpend,
+      lodgingSpend,
       dietaryPrefs: parseCsv(dietaryPrefs),
-      maxDistanceToVenueKm: numberOrNull(maxDistance),
+      maxDistanceToVenueKm: maxDistanceKm(),
       lodgingAmenities: parseCsv(lodgingAmenities),
     };
     startTransition(async () => {
@@ -76,10 +168,25 @@ export function ProfileForm({ initial }: { initial: ProfileInput }) {
 
   return (
     <div className="mt-6 flex max-w-xl flex-col gap-4">
-      <label className={label}>
-        Name
-        <input value={name} onChange={(e) => setName(e.target.value)} className={field} />
-      </label>
+      <div className="grid grid-cols-2 gap-3">
+        <label className={label}>
+          Name
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className={field}
+          />
+        </label>
+        <label className={label}>
+          Email
+          <input
+            value={email ?? ""}
+            readOnly
+            disabled
+            className={`${field} bg-gray-50 text-gray-500`}
+          />
+        </label>
+      </div>
 
       <div className="grid grid-cols-2 gap-3">
         <label className={label}>
@@ -92,57 +199,86 @@ export function ProfileForm({ initial }: { initial: ProfileInput }) {
             className={field}
           />
         </label>
-        <label className={label}>
-          Ranking tour
-          <select
-            value={rankingTour}
-            onChange={(e) => setRankingTour(e.target.value)}
-            className={field}
-          >
-            <option value="">—</option>
-            {RANKING_TOURS.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
+        <fieldset className={label}>
+          <span>Circuit</span>
+          <div className="flex items-center gap-4 py-2">
+            {CIRCUIT_OPTIONS.map((c) => (
+              <label key={c.value} className="flex items-center gap-1.5">
+                <input
+                  type="radio"
+                  name="circuit"
+                  checked={circuit === c.value}
+                  onChange={() => changeCircuit(c.value)}
+                />
+                {c.label}
+              </label>
             ))}
-          </select>
-        </label>
+          </div>
+        </fieldset>
       </div>
+
+      {circuit !== "" && (
+        <fieldset className={label}>
+          <span>Tours</span>
+          <div className="flex flex-wrap gap-3">
+            {tourOptions.map((t) => (
+              <label key={t} className="flex items-center gap-1.5 text-sm">
+                <input
+                  type="checkbox"
+                  checked={tours.includes(t)}
+                  onChange={() => toggleTour(t)}
+                />
+                {formatTour(t)}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
+
       <p className="-mt-2 text-xs text-gray-500">
-        Set your ranking + tour to see how far you are from each event&apos;s cutoff on Browse.
+        Set your ranking and circuit to see how far you are from each event&apos;s
+        cutoff on Browse.
       </p>
 
-      <div className="grid grid-cols-2 gap-3">
-        <label className={label}>
-          Home base city
+      <fieldset className={label}>
+        <span>Home Base</span>
+        <div className="grid grid-cols-2 gap-3">
           <input
             value={homeBaseCity}
             onChange={(e) => setHomeBaseCity(e.target.value)}
+            placeholder="City"
             className={field}
           />
-        </label>
-        <label className={label}>
-          Nationality (codes, comma-separated)
           <input
-            value={nationality}
-            onChange={(e) => setNationality(e.target.value)}
-            placeholder="HR, US"
+            value={homeBaseCountry}
+            onChange={(e) => setHomeBaseCountry(e.target.value)}
+            placeholder="Country"
             className={field}
           />
-        </label>
-      </div>
+        </div>
+      </fieldset>
+
+      <label className={label}>
+        Nationality
+        <input
+          value={nationality}
+          onChange={(e) => setNationality(e.target.value)}
+          placeholder="HR, US"
+          className={field}
+        />
+      </label>
 
       <fieldset className={label}>
-        <span>Surface preferences</span>
+        <span>Surface Preferences</span>
         <div className="flex flex-wrap gap-3">
-          {Object.values(Surface).map((s) => (
+          {SURFACE_OPTIONS.map((s) => (
             <label key={s} className="flex items-center gap-1.5 text-sm">
               <input
                 type="checkbox"
                 checked={surfacePrefs.includes(s)}
                 onChange={() => toggleSurface(s)}
               />
-              {formatSurface(s)}
+              {capitalize(s)}
             </label>
           ))}
         </div>
@@ -150,22 +286,45 @@ export function ProfileForm({ initial }: { initial: ProfileInput }) {
 
       <div className="grid grid-cols-2 gap-3">
         <label className={label}>
-          Budget tier
+          Budget (max cost)
+          <input
+            type="number"
+            min={0}
+            value={budget}
+            onChange={(e) => setBudget(e.target.value)}
+            className={field}
+          />
+        </label>
+        <label className={label}>
+          Currency
           <select
-            value={budgetTier}
-            onChange={(e) => setBudgetTier(e.target.value)}
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value)}
             className={field}
           >
-            <option value="">—</option>
-            {Object.values(BudgetTier).map((b) => (
-              <option key={b} value={b}>
-                {capitalize(b)}
+            {CURRENCIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
               </option>
             ))}
           </select>
         </label>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
         <label className={label}>
-          Max distance to venue (km)
+          Units
+          <select
+            value={unitSystem}
+            onChange={(e) => changeUnit(e.target.value as UnitSystem)}
+            className={field}
+          >
+            <option value={UnitSystem.METRIC}>Metric (km)</option>
+            <option value={UnitSystem.IMPERIAL}>Imperial (mi)</option>
+          </select>
+        </label>
+        <label className={label}>
+          Max Distance to Venue ({distanceUnit(unitSystem)})
           <input
             type="number"
             min={0}
@@ -176,8 +335,68 @@ export function ProfileForm({ initial }: { initial: ProfileInput }) {
         </label>
       </div>
 
+      <div className="mt-2 border-t border-gray-200 pt-4">
+        <h2 className="text-sm font-medium">Travel &amp; Lodging</h2>
+
+        {/* Transport modes — ranked */}
+        <div className="mt-3">
+          <RankedList
+            label="Transport modes, in order of preference"
+            hint="Add the modes you'll take."
+            options={ALL_TRANSPORT}
+            selected={transportModes}
+            format={formatTransportMode}
+            onChange={setTransportModes}
+          />
+        </div>
+
+        {/* Lodging types — ranked */}
+        <div className="mt-4">
+          <RankedList
+            label="Lodging types, in order of preference"
+            hint="Add the stays you'd consider."
+            options={ALL_LODGING}
+            selected={lodgingTypes}
+            format={formatLodgingType}
+            onChange={setLodgingTypes}
+          />
+        </div>
+
+        {/* Spend sliders */}
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div className={label}>
+            <span>Travel spend</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={travelSpend}
+              onChange={(e) => setTravelSpend(Number(e.target.value))}
+            />
+            <div className="flex justify-between text-xs text-gray-400">
+              <span>Save</span>
+              <span>Spend</span>
+            </div>
+          </div>
+          <div className={label}>
+            <span>Lodging spend</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={lodgingSpend}
+              onChange={(e) => setLodgingSpend(Number(e.target.value))}
+            />
+            <div className="flex justify-between text-xs text-gray-400">
+              <span>Save</span>
+              <span>Spend</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <label className={label}>
-        Dietary preferences (comma-separated)
+        Dietary Preferences
         <input
           value={dietaryPrefs}
           onChange={(e) => setDietaryPrefs(e.target.value)}
@@ -187,7 +406,7 @@ export function ProfileForm({ initial }: { initial: ProfileInput }) {
       </label>
 
       <label className={label}>
-        Lodging amenities (comma-separated)
+        Lodging Amenities
         <input
           value={lodgingAmenities}
           onChange={(e) => setLodgingAmenities(e.target.value)}
@@ -204,7 +423,7 @@ export function ProfileForm({ initial }: { initial: ProfileInput }) {
         disabled={isPending}
         className="w-fit rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-50"
       >
-        {isPending ? "Saving…" : "Save profile"}
+        {isPending ? "Saving…" : "Save Profile"}
       </button>
     </div>
   );

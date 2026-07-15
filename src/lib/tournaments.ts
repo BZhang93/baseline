@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { Tour, Surface, Prisma, type Player } from "@/generated/prisma/client";
+import { roundValue } from "@/lib/round-values";
 
 // ---------------------------------------------------------------------------
 // Pure helpers (unit-tested; no DB)
@@ -52,10 +53,29 @@ export function rankingTourFor(tour: Tour): Tour | null {
 export interface BrowseFilters {
   q?: string;
   tour?: Tour;
+  // When no single `tour` is chosen, restrict results to this set (e.g. the
+  // player's circuit tours), so "All tours" still means "all of my tours".
+  tours?: Tour[];
   surface?: Surface;
   from?: string; // ISO date
   to?: string; // ISO date
   country?: string;
+}
+
+// Resolves the Browse date window from the raw `from`/`to` search params.
+// An absent param falls back to the default window — today through the end of
+// the current year — so a fresh visit (and Clear) lands on it. An explicitly
+// empty param (the user cleared the field) means "no bound".
+export function resolveBrowseDates(
+  rawFrom: string | undefined,
+  rawTo: string | undefined,
+  now: Date,
+): { from?: string; to?: string } {
+  const today = now.toISOString().slice(0, 10);
+  const yearEnd = `${now.getUTCFullYear()}-12-31`;
+  const pick = (raw: string | undefined, fallback: string): string | undefined =>
+    raw === undefined ? fallback : raw.length > 0 ? raw : undefined;
+  return { from: pick(rawFrom, today), to: pick(rawTo, yearEnd) };
 }
 
 export interface TournamentView {
@@ -80,14 +100,6 @@ export interface TournamentView {
 // ---------------------------------------------------------------------------
 // Data access
 // ---------------------------------------------------------------------------
-
-function roundNumber(json: unknown, key: string): number | null {
-  if (json && typeof json === "object" && key in (json as Record<string, unknown>)) {
-    const v = (json as Record<string, unknown>)[key];
-    return typeof v === "number" ? v : null;
-  }
-  return null;
-}
 
 // Distinct filter options actually present in the dataset, so dropdowns never
 // offer a value (e.g. a surface) that would return zero results.
@@ -115,18 +127,20 @@ export async function getFilterOptions(): Promise<{
 
 export async function getBrowseData(
   filters: BrowseFilters,
-  player: Pick<Player, "ranking" | "rankingTour"> | null,
+  player: Pick<Player, "ranking" | "rankingTour" | "circuit"> | null,
 ): Promise<TournamentView[]> {
   const where: Prisma.TournamentWhereInput = {};
+  // Scope to the player's circuit so they never see the other circuit's events
+  // — in particular disambiguating ITF, which spans both men's and women's.
+  if (player?.circuit) where.circuit = player.circuit;
   if (filters.tour) where.tour = filters.tour;
+  else if (filters.tours && filters.tours.length > 0) where.tour = { in: filters.tours };
   if (filters.surface) where.surface = filters.surface;
   if (filters.country) where.country = filters.country;
-  if (filters.from || filters.to) {
-    where.startDate = {
-      ...(filters.from ? { gte: new Date(filters.from) } : {}),
-      ...(filters.to ? { lte: new Date(filters.to) } : {}),
-    };
-  }
+  // Match tournaments that OVERLAP the [from, to] window, not just those whose
+  // start falls inside it — so an event already in progress today still shows.
+  if (filters.from) where.endDate = { gte: new Date(filters.from) };
+  if (filters.to) where.startDate = { lte: new Date(filters.to) };
   if (filters.q) {
     const contains = { contains: filters.q, mode: Prisma.QueryMode.insensitive };
     where.OR = [{ name: contains }, { city: contains }, { country: contains }];
@@ -152,8 +166,8 @@ export async function getBrowseData(
     startDate: t.startDate,
     endDate: t.endDate,
     drawSize: t.drawSize,
-    winnerPoints: roundNumber(t.category?.pointsByRound, "W"),
-    winnerPrize: roundNumber(t.category?.prizeMoneyByRound, "W"),
+    winnerPoints: roundValue(t.category?.pointsByRound, "W"),
+    winnerPrize: roundValue(t.category?.prizeMoneyByRound, "W"),
     currency: t.category?.currency ?? null,
     ...buildCutoffAndGap(t.tour, t.cutoff, pointsAt, player),
   }));
@@ -168,14 +182,50 @@ export type RankingLookup = (
   rank: number | null | undefined,
 ) => number | null;
 
-// Loads all rankings once and returns a (tour, rank) -> points lookup.
-export async function loadRankingLookup(): Promise<RankingLookup> {
-  const rows = await prisma.rankingEntry.findMany({
-    select: { tour: true, rank: true, points: true },
-  });
+// Builds a (tour, rank) -> points lookup from ranking rows, keyed to the latest
+// asOfDate per tour. RankingEntry is unique on (tour, rank, asOfDate) and
+// accumulates weekly snapshots; scoping to the latest snapshot per tour stops a
+// stale snapshot from silently overwriting the current one under the
+// (tour, rank) key. Pure + unit-tested; loadRankingLookup only feeds it the
+// latest rows (so this selection is a correctness safety net, not extra I/O).
+export function buildRankingLookup(
+  rows: Array<{ tour: Tour; rank: number; points: number; asOfDate: Date }>,
+): RankingLookup {
+  const latestMs = new Map<string, number>();
+  for (const r of rows) {
+    const ms = r.asOfDate.getTime();
+    const cur = latestMs.get(r.tour);
+    if (cur === undefined || ms > cur) latestMs.set(r.tour, ms);
+  }
   const map = new Map<string, number>();
-  for (const r of rows) map.set(`${r.tour}:${r.rank}`, r.points);
+  for (const r of rows) {
+    if (r.asOfDate.getTime() === latestMs.get(r.tour)) {
+      map.set(`${r.tour}:${r.rank}`, r.points);
+    }
+  }
   return (tour, rank) => (rank == null ? null : (map.get(`${tour}:${rank}`) ?? null));
+}
+
+// Loads the most recent ranking snapshot per tour and returns a
+// (tour, rank) -> points lookup. Only the latest snapshot's rows are fetched
+// (scoped via groupBy), so the query stays bounded as weekly snapshots
+// accumulate.
+export async function loadRankingLookup(): Promise<RankingLookup> {
+  const latest = await prisma.rankingEntry.groupBy({
+    by: ["tour"],
+    _max: { asOfDate: true },
+  });
+  const snapshots = latest
+    .filter((l): l is typeof l & { _max: { asOfDate: Date } } => l._max.asOfDate != null)
+    .map((l) => ({ tour: l.tour, asOfDate: l._max.asOfDate }));
+
+  if (snapshots.length === 0) return () => null;
+
+  const rows = await prisma.rankingEntry.findMany({
+    where: { OR: snapshots },
+    select: { tour: true, rank: true, points: true, asOfDate: true },
+  });
+  return buildRankingLookup(rows);
 }
 
 export interface CutoffAndGap {

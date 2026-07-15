@@ -28,17 +28,17 @@ export default async function AppLayout({
               href="/schedules/new"
               className="rounded bg-black px-3 py-1.5 text-sm text-white"
             >
-              Create schedule
+              Create Schedule
             </Link>
             <span className="hidden text-sm text-gray-500 sm:inline">
-              {session.email}
+              {session.player.name ?? session.email}
             </span>
             <form action={logout}>
               <button
                 type="submit"
                 className="rounded border border-gray-300 px-3 py-1.5 text-sm"
               >
-                Log out
+                Log Out
               </button>
             </form>
           </div>

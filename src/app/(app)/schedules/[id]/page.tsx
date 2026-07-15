@@ -6,10 +6,14 @@ import {
   type ScheduleEventView,
   type TravelLegView,
 } from "@/lib/schedules";
-import { formatDateRange, formatMoney, formatSurface, formatTravelTime } from "@/lib/format";
+import { formatDateRange, formatMoney, formatSurface, formatTour, formatTravelTime } from "@/lib/format";
+import { flightSearchUrl, lodgingSearchUrl } from "@/lib/booking-links";
 import { GapBadge } from "../../_components/gap-badge";
 import { RenameName } from "../_components/rename-name";
 import { removeEventAction, deleteScheduleAction } from "../actions";
+
+const externalLink =
+  "rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50";
 
 function EventRow({
   scheduleId,
@@ -40,7 +44,7 @@ function EventRow({
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2 text-xs">
-        <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">{e.tour}</span>
+        <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">{formatTour(e.tour)}</span>
         <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">
           {e.tier.replaceAll("_", " ")}
         </span>
@@ -54,18 +58,18 @@ function EventRow({
           <div>{e.winnerPoints != null ? `${e.winnerPoints} pts` : "—"}</div>
         </div>
         <div>
-          <div className="text-gray-500">Prize (W)</div>
+          <div className="text-gray-500">Prize (Winner)</div>
           <div>{formatMoney(e.winnerPrize, e.currency ?? undefined)}</div>
         </div>
         <div>
-          <div className="text-gray-500">Live cutoff</div>
+          <div className="text-gray-500">Live Cutoff</div>
           <div>
             {e.cutoff.liveCutoff.rank != null ? `#${e.cutoff.liveCutoff.rank}` : "—"}
             {e.cutoff.liveCutoff.points != null ? ` · ${e.cutoff.liveCutoff.points} pts` : ""}
           </div>
         </div>
         <div>
-          <div className="text-gray-500">Last year</div>
+          <div className="text-gray-500">Last Year</div>
           <div>
             {e.cutoff.historicalCutoff.rank != null
               ? `#${e.cutoff.historicalCutoff.rank}`
@@ -73,13 +77,23 @@ function EventRow({
           </div>
         </div>
       </div>
+      <div className="mt-3">
+        <a
+          href={lodgingSearchUrl(e.city, e.country, e.startDate)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={externalLink}
+        >
+          Find stays ↗
+        </a>
+      </div>
     </div>
   );
 }
 
 function LegRow({ leg }: { leg: TravelLegView }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-2 text-sm text-gray-500">
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-500">
       <span>✈</span>
       <span>
         {leg.fromLabel} → {leg.toLabel}
@@ -88,6 +102,14 @@ function LegRow({ leg }: { leg: TravelLegView }) {
       <span>{formatTravelTime(leg.durationMinutes)}</span>
       <span>·</span>
       <span>{formatMoney(leg.costEstimate)}</span>
+      <a
+        href={flightSearchUrl(leg.fromLabel, leg.toLabel)}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`${externalLink} ml-1`}
+      >
+        Book flight ↗
+      </a>
     </div>
   );
 }
@@ -132,19 +154,19 @@ export default async function ScheduleDetailPage({
       {/* Totals */}
       <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border border-gray-200 p-4 text-sm sm:grid-cols-4">
         <div>
-          <div className="text-gray-500">Potential pts</div>
+          <div className="text-gray-500">Potential Points</div>
           <div>{schedule.totals.points ?? "—"}</div>
         </div>
         <div>
-          <div className="text-gray-500">Potential prize</div>
+          <div className="text-gray-500">Potential Prize</div>
           <div>{formatMoney(schedule.totals.prize)}</div>
         </div>
         <div>
-          <div className="text-gray-500">Est. travel time</div>
+          <div className="text-gray-500">Est. Travel Time</div>
           <div>{formatTravelTime(schedule.totals.travelTimeMin)}</div>
         </div>
         <div>
-          <div className="text-gray-500">Est. travel cost</div>
+          <div className="text-gray-500">Est. Travel Cost</div>
           <div>{formatMoney(schedule.totals.travelCost)}</div>
         </div>
       </div>

@@ -38,3 +38,35 @@ export function capitalize(word: string): string {
 }
 
 export const formatSurface = capitalize;
+
+// Tour labels: ATP / WTA / ITF are acronyms (kept upper-case); "CHALLENGER"
+// reads as a word.
+export function formatTour(tour: string): string {
+  return tour === "CHALLENGER" ? "Challenger" : tour;
+}
+
+export function formatTransportMode(mode: string): string {
+  return capitalize(mode); // FLIGHT -> Flight, RIDESHARE -> Rideshare, …
+}
+
+const LODGING_LABELS: Record<string, string> = {
+  HOTEL: "Hotel",
+  RESIDENCE: "Residence (Airbnb-style)",
+  APARTMENT: "Apartment / extended-stay",
+  HOSTEL: "Hostel",
+  HOST_HOUSING: "Host housing",
+  BNB: "B&B",
+};
+export function formatLodgingType(type: string): string {
+  return LODGING_LABELS[type] ?? capitalize(type);
+}
+
+// Distance conversions. Distances are stored canonically in km; the UI converts
+// for players who prefer imperial units.
+const KM_PER_MI = 1.609344;
+export function kmToMi(km: number): number {
+  return km / KM_PER_MI;
+}
+export function miToKm(mi: number): number {
+  return mi * KM_PER_MI;
+}
