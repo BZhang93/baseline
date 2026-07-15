@@ -224,8 +224,14 @@ export async function getScheduleCandidates(
     orderBy: { startDate: "asc" },
   });
   return rows.map((t) => {
-    // The player's rank only applies to events on their ranking tour.
-    const rank = rankingTourFor(t.tour) === player.rankingTour ? player.ranking : null;
+    // The player's rank only applies to ATP/WTA events on their ranking tour.
+    // rankingTourFor is null for Challenger/ITF, so require a non-null match to
+    // avoid a null===null coincidence applying the rank to the wrong events.
+    const eventRankingTour = rankingTourFor(t.tour);
+    const rank =
+      eventRankingTour != null && eventRankingTour === player.rankingTour
+        ? player.ranking
+        : null;
     const cutoffRank = t.cutoff?.liveCutoffRank ?? null;
     return {
       id: t.id,
