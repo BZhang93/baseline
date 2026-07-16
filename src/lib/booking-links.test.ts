@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { flightSearchUrl, lodgingSearchUrl } from "./booking-links";
+import { flightSearchUrl, lodgingSearchUrl, transportSearchUrl } from "./booking-links";
+import { TransportMode } from "@/generated/prisma/enums";
 
 describe("flightSearchUrl", () => {
   it("builds a Google Flights query from/to", () => {
@@ -26,5 +27,32 @@ describe("lodgingSearchUrl", () => {
   it("includes a check-in date when provided", () => {
     const url = lodgingSearchUrl("Palermo", "Italy", new Date("2026-07-13"));
     expect(url).toContain("checkin=2026-07-13");
+  });
+});
+
+describe("transportSearchUrl", () => {
+  it("uses Google Flights for FLIGHT and the null/default fallback", () => {
+    expect(transportSearchUrl("Hamburg", "Prague", TransportMode.FLIGHT)).toContain(
+      "google.com/travel/flights",
+    );
+    expect(transportSearchUrl("Hamburg", "Prague", null)).toContain(
+      "google.com/travel/flights",
+    );
+  });
+  it("searches rail/coach for TRAIN and BUS", () => {
+    expect(decodeURIComponent(transportSearchUrl("Umag", "Gstaad", TransportMode.TRAIN))).toContain(
+      "trains from Umag to Gstaad",
+    );
+    expect(decodeURIComponent(transportSearchUrl("Umag", "Gstaad", TransportMode.BUS))).toContain(
+      "buses from Umag to Gstaad",
+    );
+  });
+  it("uses Maps directions for CAR and RIDESHARE", () => {
+    expect(transportSearchUrl("Umag", "Gstaad", TransportMode.CAR)).toContain(
+      "google.com/maps/dir",
+    );
+    expect(transportSearchUrl("Umag", "Gstaad", TransportMode.RIDESHARE)).toContain(
+      "google.com/maps/dir",
+    );
   });
 });

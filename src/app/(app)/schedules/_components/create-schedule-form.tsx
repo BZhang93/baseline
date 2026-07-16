@@ -10,13 +10,17 @@ import {
   type OptimizerWeights,
 } from "@/lib/optimizer";
 import type { AcceptanceStatus } from "@/lib/tournaments";
+import type { TransportMode } from "@/generated/prisma/enums";
 import {
   formatDateRange,
   formatSurface,
   formatTour,
   formatTravelTime,
   formatMoney,
+  formatTransportMode,
 } from "@/lib/format";
+import { haversineKm, estimateTravel } from "@/lib/travel";
+import { transportSearchUrl, lodgingSearchUrl } from "@/lib/booking-links";
 import {
   filterPickerTournaments,
   pickerOptions,
@@ -62,9 +66,11 @@ const ACCEPTANCE: Record<AcceptanceStatus, { label: string; className: string } 
 export function CreateScheduleForm({
   candidates,
   initialSelectedIds = [],
+  preferredTransport = null,
 }: {
   candidates: PickerCandidate[];
   initialSelectedIds?: string[];
+  preferredTransport?: TransportMode | null;
 }) {
   const [name, setName] = useState("");
   const [from, setFrom] = useState("");
@@ -88,6 +94,39 @@ export function CreateScheduleForm({
     [selectedIds, byId],
   );
   const totals = useMemo(() => scheduleTotals(selected), [selected]);
+
+  // Estimated travel legs between consecutive selected events (for the trip
+  // view + booking links). Mirrors the optimizer's leg estimate.
+  const legs = useMemo(() => {
+    const out: {
+      from: PickerCandidate;
+      to: PickerCandidate;
+      minutes: number | null;
+      cost: number | null;
+    }[] = [];
+    for (let i = 1; i < selected.length; i++) {
+      const from = selected[i - 1];
+      const to = selected[i];
+      const hasCoords =
+        from.lat != null && from.long != null && to.lat != null && to.long != null;
+      const est = hasCoords
+        ? estimateTravel(
+            haversineKm(
+              { lat: from.lat!, long: from.long! },
+              { lat: to.lat!, long: to.long! },
+            ),
+          )
+        : null;
+      out.push({
+        from,
+        to,
+        minutes: est?.durationMinutes ?? null,
+        cost: est?.costEstimate ?? null,
+      });
+    }
+    return out;
+  }, [selected]);
+
   const [filters, setFilters] = useState<PickerFilters>(EMPTY_PICKER_FILTERS);
 
   const options = useMemo(() => pickerOptions(candidates), [candidates]);
@@ -313,16 +352,62 @@ export function CreateScheduleForm({
                       )}
                     </div>
                   </div>
-                  <button
-                    onClick={() => remove(t.id)}
-                    className="text-xs text-gray-500 hover:text-red-600"
-                  >
-                    Remove
-                  </button>
+                  <div className="flex flex-col items-end gap-1">
+                    <a
+                      href={lodgingSearchUrl(t.city, t.country, t.startDate)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-gray-500 underline hover:text-gray-800"
+                    >
+                      Find stays ↗
+                    </a>
+                    <button
+                      onClick={() => remove(t.id)}
+                      className="text-xs text-gray-500 hover:text-red-600"
+                    >
+                      Remove
+                    </button>
+                  </div>
                 </li>
               );
             })}
           </ol>
+        )}
+
+        {legs.length > 0 && (
+          <div className="mt-4">
+            <h3 className="text-xs font-medium text-gray-500">
+              Getting around{" "}
+              {preferredTransport ? `· ${formatTransportMode(preferredTransport)}` : ""}
+            </h3>
+            <ul className="mt-1 flex flex-col gap-1 text-xs text-gray-600">
+              {legs.map((leg) => (
+                <li key={`${leg.from.id}-${leg.to.id}`} className="flex items-center gap-2">
+                  <span className="flex-1">
+                    {leg.from.city} → {leg.to.city}
+                    {leg.minutes != null && (
+                      <span className="text-gray-400">
+                        {" "}
+                        · {formatTravelTime(leg.minutes)} · ~{formatMoney(leg.cost)}
+                      </span>
+                    )}
+                  </span>
+                  <a
+                    href={transportSearchUrl(
+                      `${leg.from.city}, ${leg.from.country}`,
+                      `${leg.to.city}, ${leg.to.country}`,
+                      preferredTransport,
+                    )}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline hover:text-gray-900"
+                  >
+                    Book ↗
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         <div className="mt-6 flex items-center justify-between">
