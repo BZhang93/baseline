@@ -201,6 +201,10 @@ model Player {
   tours       Tour[]
   /// Derived from `circuit` (Men's → ATP, Women's → WTA); used for the cutoff gap.
   rankingTour Tour?
+  /// Official ATP/WTA/ITF player-page URL the player links to verify their
+  /// identity; the ranking/results scraper (Phase 1 data pipeline) will read
+  /// from it to auto-update `ranking`.
+  tourProfileUrl String?
   nationality String[] // ISO country codes
 
   homeBaseCity    String?
