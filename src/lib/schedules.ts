@@ -1,50 +1,23 @@
 import { prisma } from "@/lib/prisma";
-import type { Tour, Surface, Player, Circuit } from "@/generated/prisma/client";
+import type { Tour, Surface, Player } from "@/generated/prisma/client";
 import {
   loadRankingLookup,
   buildCutoffAndGap,
+  rankingTourFor,
+  computeGap,
   type CutoffAndGap,
+  type AcceptanceStatus,
 } from "@/lib/tournaments";
 import { roundValue } from "@/lib/round-values";
+import { haversineKm, estimateTravel, type Coord } from "@/lib/travel";
+
+// Re-exported for existing importers; the implementations live in travel.ts so
+// they can also be used client-side and by the optimizer.
+export { haversineKm, estimateTravel, type Coord };
 
 // The winner ("W") value of a points/prize-by-round blob, treated as 0 when
 // absent so it can be summed across a schedule's events.
 const winnerPoints = (json: unknown): number => roundValue(json, "W") ?? 0;
-
-// ---------------------------------------------------------------------------
-// Pure helpers (unit-tested; no DB)
-// ---------------------------------------------------------------------------
-
-export interface Coord {
-  lat: number;
-  long: number;
-}
-
-// Great-circle distance in km.
-export function haversineKm(a: Coord, b: Coord): number {
-  const R = 6371;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(b.lat - a.lat);
-  const dLong = toRad(b.long - a.long);
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLong / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
-}
-
-// Rough v1 flight estimate from distance (real APIs land in Phase 1). ~800 km/h
-// plus ~2h airport overhead; ~$0.15/km. Clearly an estimate, not a quote.
-export function estimateTravel(distanceKm: number): {
-  durationMinutes: number;
-  costEstimate: number;
-} {
-  return {
-    durationMinutes: Math.round((distanceKm / 800) * 60 + 120),
-    costEstimate: Math.round(distanceKm * 0.15),
-  };
-}
 
 // ---------------------------------------------------------------------------
 // Data access
@@ -226,26 +199,58 @@ export interface PickerTournament {
   endDate: Date;
 }
 
-// Minimal tournament list for the create-schedule event picker.
-// Scoped to the player's circuit so a men's player can't add women's events
-// (and vice-versa); no circuit / logged-out lists everything.
-export async function getTournamentsForPicker(
-  circuit: Circuit | null,
-): Promise<PickerTournament[]> {
-  return prisma.tournament.findMany({
-    where: circuit ? { circuit } : undefined,
-    select: {
-      id: true,
-      name: true,
-      tour: true,
-      tier: true,
-      surface: true,
-      city: true,
-      country: true,
-      startDate: true,
-      endDate: true,
-    },
+// A picker tournament enriched with the fields the optimizer needs, so the
+// create-schedule form can both display events and run optimizeSchedule /
+// scheduleTotals client-side (its shape is a superset of CandidateEvent).
+export interface PickerCandidate extends PickerTournament {
+  lat: number | null;
+  long: number | null;
+  pointsByRound: unknown;
+  prizeMoneyByRound: unknown;
+  fieldRefRank: number | null; // live cutoff rank (field-strength proxy)
+  playerRankForEvent: number | null; // player's applicable rank, else null
+  acceptance: AcceptanceStatus;
+}
+
+// Candidate events for the create-schedule picker + optimizer. Scoped to the
+// player's circuit (a men's player can't add women's events), with per-event
+// acceptance and the inputs the optimizer's round-reached proxy needs.
+export async function getScheduleCandidates(
+  player: Pick<Player, "ranking" | "rankingTour" | "circuit">,
+): Promise<PickerCandidate[]> {
+  const rows = await prisma.tournament.findMany({
+    where: player.circuit ? { circuit: player.circuit } : undefined,
+    include: { category: true, cutoff: true },
     orderBy: { startDate: "asc" },
+  });
+  return rows.map((t) => {
+    // The player's rank only applies to ATP/WTA events on their ranking tour.
+    // rankingTourFor is null for Challenger/ITF, so require a non-null match to
+    // avoid a null===null coincidence applying the rank to the wrong events.
+    const eventRankingTour = rankingTourFor(t.tour);
+    const rank =
+      eventRankingTour != null && eventRankingTour === player.rankingTour
+        ? player.ranking
+        : null;
+    const cutoffRank = t.cutoff?.liveCutoffRank ?? null;
+    return {
+      id: t.id,
+      name: t.name,
+      tour: t.tour,
+      tier: t.tier,
+      surface: t.surface,
+      city: t.city,
+      country: t.country,
+      startDate: t.startDate,
+      endDate: t.endDate,
+      lat: t.lat,
+      long: t.long,
+      pointsByRound: t.category?.pointsByRound ?? {},
+      prizeMoneyByRound: t.category?.prizeMoneyByRound ?? {},
+      fieldRefRank: cutoffRank,
+      playerRankForEvent: rank,
+      acceptance: computeGap(rank, cutoffRank, null, null).status,
+    };
   });
 }
 

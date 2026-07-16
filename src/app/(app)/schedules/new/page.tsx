@@ -1,5 +1,6 @@
+import { redirect } from "next/navigation";
 import { getCurrentSession } from "@/lib/player";
-import { getTournamentsForPicker, parseEventIdsParam } from "@/lib/schedules";
+import { getScheduleCandidates, parseEventIdsParam } from "@/lib/schedules";
 import { CreateScheduleForm } from "../_components/create-schedule-form";
 
 export default async function NewSchedulePage({
@@ -9,24 +10,25 @@ export default async function NewSchedulePage({
 }) {
   const sp = await searchParams;
   const session = await getCurrentSession();
-  const tournaments = await getTournamentsForPicker(session?.player.circuit ?? null);
+  if (!session) redirect("/login");
+  const candidates = await getScheduleCandidates(session.player);
 
   const eventsParam = Array.isArray(sp.events) ? sp.events[0] : sp.events;
   const initialSelectedIds = parseEventIdsParam(
     eventsParam,
-    tournaments.map((t) => t.id),
+    candidates.map((t) => t.id),
   );
 
   return (
     <div>
       <h1 className="text-2xl font-semibold">Create Schedule</h1>
       <p className="mt-1 text-sm text-gray-500">
-        Set your window and constraints, then add tournaments. Travel time and
-        cost are estimated between events.
+        Set your window and constraints, then let Baseline suggest a schedule —
+        or add events yourself. Travel time and cost are estimated between events.
       </p>
       <div className="mt-6">
         <CreateScheduleForm
-          tournaments={tournaments}
+          candidates={candidates}
           initialSelectedIds={initialSelectedIds}
         />
       </div>
