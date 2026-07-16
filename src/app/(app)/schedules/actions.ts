@@ -6,6 +6,7 @@ import { getCurrentSession } from "@/lib/player";
 import {
   createSchedule,
   renameSchedule,
+  updateScheduleTripCosts,
   removeEventFromSchedule,
   deleteSchedule,
   type CreateScheduleInput,
@@ -40,6 +41,14 @@ export async function renameScheduleAction(
   if (!name.trim()) return "Name can't be empty.";
   const ok = await renameSchedule(session.player.id, id, name.trim());
   if (!ok) return "Schedule not found.";
+  revalidatePath(`/schedules/${id}`);
+  revalidatePath("/schedules");
+}
+
+export async function updateTripCostsAction(id: string, tripCosts: number): Promise<void> {
+  const session = await getCurrentSession();
+  if (!session) return;
+  await updateScheduleTripCosts(session.player.id, id, tripCosts);
   revalidatePath(`/schedules/${id}`);
   revalidatePath("/schedules");
 }

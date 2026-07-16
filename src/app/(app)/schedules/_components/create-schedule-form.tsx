@@ -79,6 +79,7 @@ export function CreateScheduleForm({
   const [budgetCap, setBudgetCap] = useState("");
   const [maxEvents, setMaxEvents] = useState("");
   const [minRestDays, setMinRestDays] = useState("");
+  const [tripCosts, setTripCosts] = useState("");
   const [priority, setPriority] = useState(50);
   const [selectedIds, setSelectedIds] = useState<string[]>(initialSelectedIds);
   const [error, setError] = useState<string | null>(null);
@@ -198,6 +199,7 @@ export function CreateScheduleForm({
         budgetCap: numberOrUndefined(budgetCap),
         maxEvents: numberOrUndefined(maxEvents),
         minRestDays: numberOrUndefined(minRestDays),
+        tripCosts: numberOrUndefined(tripCosts),
         ...weightsFromPriority(priority),
         tournamentIds: selectedIds,
       });
@@ -267,6 +269,21 @@ export function CreateScheduleForm({
           </label>
         </div>
 
+        <label className={label}>
+          Trip Costs (lodging, food, etc.)
+          <input
+            type="number"
+            min={0}
+            value={tripCosts}
+            onChange={(e) => setTripCosts(e.target.value)}
+            placeholder="$ out-of-pocket for the swing"
+            className={field}
+          />
+          <span className="text-xs text-gray-400">
+            Subtracted (with estimated travel) from expected prize for net earnings.
+          </span>
+        </label>
+
         <div className={label}>
           <div className="flex justify-between">
             <span>Priority</span>
@@ -296,7 +313,7 @@ export function CreateScheduleForm({
         {suggestion && <p className="text-xs text-gray-500">{suggestion}</p>}
 
         {/* Live score summary for the current selection. */}
-        <div className="grid grid-cols-2 gap-3 rounded border border-gray-200 p-3 text-sm sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 rounded border border-gray-200 p-3 text-sm sm:grid-cols-5">
           <div>
             <div className="text-xs text-gray-500">Exp. points</div>
             <div className="font-medium">{totals.expectedPoints}</div>
@@ -312,6 +329,20 @@ export function CreateScheduleForm({
           <div>
             <div className="text-xs text-gray-500">Travel cost</div>
             <div className="font-medium">{formatMoney(totals.travelCost)}</div>
+          </div>
+          <div>
+            <div className="text-xs text-gray-500">Net after costs</div>
+            <div
+              className={`font-medium ${
+                totals.expectedPrize - totals.travelCost - (numberOrUndefined(tripCosts) ?? 0) < 0
+                  ? "text-red-600"
+                  : "text-green-700"
+              }`}
+            >
+              {formatMoney(
+                totals.expectedPrize - totals.travelCost - (numberOrUndefined(tripCosts) ?? 0),
+              )}
+            </div>
           </div>
         </div>
 

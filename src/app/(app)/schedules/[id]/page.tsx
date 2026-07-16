@@ -18,6 +18,7 @@ import { transportSearchUrl, lodgingSearchUrl } from "@/lib/booking-links";
 import type { TransportMode } from "@/generated/prisma/enums";
 import { GapBadge } from "../../_components/gap-badge";
 import { RenameName } from "../_components/rename-name";
+import { TripCosts } from "../_components/trip-costs";
 import { removeEventAction, deleteScheduleAction } from "../actions";
 
 const externalLink =
@@ -186,23 +187,38 @@ export default async function ScheduleDetailPage({
         </p>
       )}
 
-      {/* Totals */}
-      <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border border-gray-200 p-4 text-sm sm:grid-cols-4">
+      {/* Totals — expected value (round-reached), net of costs. */}
+      <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 rounded-lg border border-gray-200 p-4 text-sm sm:grid-cols-3">
         <div>
-          <div className="text-gray-500">Potential Points</div>
-          <div>{schedule.totals.points ?? "—"}</div>
+          <div className="text-gray-500">Expected Points</div>
+          <div className="font-medium">{schedule.totals.expectedPoints}</div>
         </div>
         <div>
-          <div className="text-gray-500">Potential Prize</div>
-          <div>{formatMoney(schedule.totals.prize)}</div>
+          <div className="text-gray-500">Expected Prize</div>
+          <div className="font-medium">{formatMoney(schedule.totals.expectedPrize)}</div>
         </div>
         <div>
-          <div className="text-gray-500">Est. Travel Time</div>
-          <div>{formatTravelTime(schedule.totals.travelTimeMin)}</div>
+          <div className="text-gray-500">Est. Travel</div>
+          <div className="font-medium">
+            {formatTravelTime(schedule.totals.travelTimeMin)} · {formatMoney(schedule.totals.travelCost)}
+          </div>
         </div>
         <div>
-          <div className="text-gray-500">Est. Travel Cost</div>
-          <div>{formatMoney(schedule.totals.travelCost)}</div>
+          <div className="text-gray-500">Trip Costs (lodging, food…)</div>
+          <TripCosts id={schedule.id} initial={schedule.tripCosts} />
+        </div>
+        <div className="sm:col-span-2">
+          <div className="text-gray-500">Net After Costs</div>
+          <div
+            className={`text-lg font-semibold ${
+              schedule.totals.netEarnings < 0 ? "text-red-600" : "text-green-700"
+            }`}
+          >
+            {formatMoney(schedule.totals.netEarnings)}
+          </div>
+          <div className="text-xs text-gray-400">
+            Expected prize − estimated travel − trip costs
+          </div>
         </div>
       </div>
 
