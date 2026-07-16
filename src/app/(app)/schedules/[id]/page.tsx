@@ -6,8 +6,16 @@ import {
   type ScheduleEventView,
   type TravelLegView,
 } from "@/lib/schedules";
-import { formatDateRange, formatMoney, formatSurface, formatTour, formatTravelTime } from "@/lib/format";
-import { flightSearchUrl, lodgingSearchUrl } from "@/lib/booking-links";
+import {
+  formatDateRange,
+  formatMoney,
+  formatSurface,
+  formatTour,
+  formatTravelTime,
+  formatTransportMode,
+} from "@/lib/format";
+import { transportSearchUrl, lodgingSearchUrl } from "@/lib/booking-links";
+import type { TransportMode } from "@/generated/prisma/enums";
 import { GapBadge } from "../../_components/gap-badge";
 import { RenameName } from "../_components/rename-name";
 import { removeEventAction, deleteScheduleAction } from "../actions";
@@ -91,10 +99,19 @@ function EventRow({
   );
 }
 
-function LegRow({ leg }: { leg: TravelLegView }) {
+const TRANSPORT_ICON: Record<TransportMode, string> = {
+  FLIGHT: "✈",
+  TRAIN: "🚆",
+  BUS: "🚌",
+  CAR: "🚗",
+  RIDESHARE: "🚕",
+};
+
+function LegRow({ leg, mode }: { leg: TravelLegView; mode: TransportMode | null }) {
+  const label = mode ? formatTransportMode(mode).toLowerCase() : "flight";
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-500">
-      <span>✈</span>
+      <span>{mode ? TRANSPORT_ICON[mode] : "✈"}</span>
       <span>
         {leg.fromLabel} → {leg.toLabel}
       </span>
@@ -103,12 +120,12 @@ function LegRow({ leg }: { leg: TravelLegView }) {
       <span>·</span>
       <span>{formatMoney(leg.costEstimate)}</span>
       <a
-        href={flightSearchUrl(leg.fromLabel, leg.toLabel)}
+        href={transportSearchUrl(leg.fromLabel, leg.toLabel, mode)}
         target="_blank"
         rel="noopener noreferrer"
         className={`${externalLink} ml-1`}
       >
-        Book flight ↗
+        Book {label} ↗
       </a>
     </div>
   );
@@ -184,7 +201,9 @@ export default async function ScheduleDetailPage({
           {schedule.events.map((e, i) => (
             <li key={e.tournamentId} className="flex flex-col gap-3">
               <EventRow scheduleId={schedule.id} e={e} />
-              {schedule.legs[i] && <LegRow leg={schedule.legs[i]} />}
+              {schedule.legs[i] && (
+                <LegRow leg={schedule.legs[i]} mode={session.player.transportModes[0] ?? null} />
+              )}
             </li>
           ))}
         </ol>
