@@ -31,13 +31,18 @@ function EventRow({
   e: ScheduleEventView;
 }) {
   return (
-    <div className="rounded-lg border border-gray-200 p-4">
+    <div className={`rounded-lg border p-4 ${e.conflict ? "border-red-200 bg-red-50" : "border-gray-200"}`}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="font-medium">{e.name}</h3>
           <p className="text-sm text-gray-500">
             {e.city}, {e.country} · {formatDateRange(e.startDate, e.endDate)}
           </p>
+          {e.conflict && (
+            <p className="mt-1 text-xs font-medium text-red-700">
+              Same-week conflict — not counted in totals
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <GapBadge gap={e.cutoff.gap} />
@@ -143,6 +148,11 @@ export default async function ScheduleDetailPage({
   const schedule = await getScheduleDetail(session.player.id, id, session.player);
   if (!schedule) notFound();
 
+  const mode = session.player.transportModes[0] ?? null;
+  // Legs are keyed to the event they depart after, so they align even when
+  // some events are same-week conflicts (excluded from the path).
+  const legByAfter = new Map(schedule.legs.map((l) => [l.afterTournamentId, l]));
+
   return (
     <div>
       <Link href="/schedules" className="text-sm text-gray-500 underline">
@@ -167,6 +177,14 @@ export default async function ScheduleDetailPage({
           : "No dates set"}{" "}
         · {schedule.events.length} events
       </p>
+
+      {schedule.conflictCount > 0 && (
+        <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {schedule.conflictCount} event{schedule.conflictCount > 1 ? "s" : ""} overlap the same week
+          as another — a player can only play one at a time, so they&apos;re flagged below and
+          excluded from the totals. Remove them to resolve.
+        </p>
+      )}
 
       {/* Totals */}
       <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border border-gray-200 p-4 text-sm sm:grid-cols-4">
@@ -198,14 +216,15 @@ export default async function ScheduleDetailPage({
         </p>
       ) : (
         <ol className="mt-6 flex flex-col gap-4">
-          {schedule.events.map((e, i) => (
-            <li key={e.tournamentId} className="flex flex-col gap-3">
-              <EventRow scheduleId={schedule.id} e={e} />
-              {schedule.legs[i] && (
-                <LegRow leg={schedule.legs[i]} mode={session.player.transportModes[0] ?? null} />
-              )}
-            </li>
-          ))}
+          {schedule.events.map((e) => {
+            const leg = legByAfter.get(e.tournamentId);
+            return (
+              <li key={e.tournamentId} className="flex flex-col gap-3">
+                <EventRow scheduleId={schedule.id} e={e} />
+                {leg && <LegRow leg={leg} mode={mode} />}
+              </li>
+            );
+          })}
         </ol>
       )}
     </div>

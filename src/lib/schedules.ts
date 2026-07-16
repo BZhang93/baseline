@@ -9,6 +9,7 @@ import {
   type AcceptanceStatus,
 } from "@/lib/tournaments";
 import { roundValue } from "@/lib/round-values";
+import { resolvePlayedPath } from "@/lib/schedule-path";
 import { haversineKm, estimateTravel, type Coord } from "@/lib/travel";
 
 // Re-exported for existing importers; the implementations live in travel.ts so
@@ -64,6 +65,7 @@ export interface LegEvent {
   lat: number | null;
   long: number | null;
   startDate: Date;
+  endDate: Date;
   category: { pointsByRound: unknown; prizeMoneyByRound: unknown } | null;
 }
 
@@ -86,19 +88,23 @@ export interface LegsAndScores {
   scorePrizeMoney: number;
   scoreTravelTimeMin: number;
   scoreTravelCost: number;
+  // Events dropped because they collide with an earlier event the same week —
+  // a player can only play one at a time (player-feedback P0-1).
+  conflictCount: number;
 }
 
-// Builds estimated travel legs between consecutive events and the cached score
-// totals. `events` must already be ordered chronologically. Shared by create
-// and edit so both stay consistent.
+// Builds estimated travel legs + score totals over the *played path* — the
+// chronological, non-overlapping subset of the events (same-week collisions are
+// dropped, never summed). Accepts events in any order. Shared by create + edit.
 export function buildLegsAndScores(events: LegEvent[]): LegsAndScores {
+  const { path, conflicts } = resolvePlayedPath(events);
   const legs: LegInput[] = [];
   let travelTimeMin = 0;
   let travelCost = 0;
 
-  for (let i = 1; i < events.length; i++) {
-    const from = events[i - 1];
-    const to = events[i];
+  for (let i = 1; i < path.length; i++) {
+    const from = path[i - 1];
+    const to = path[i];
     let durationMinutes: number | null = null;
     let costEstimate: number | null = null;
     if (from.lat != null && from.long != null && to.lat != null && to.long != null) {
@@ -126,10 +132,11 @@ export function buildLegsAndScores(events: LegEvent[]): LegsAndScores {
 
   return {
     legs,
-    scorePoints: events.reduce((s, t) => s + winnerPoints(t.category?.pointsByRound), 0),
-    scorePrizeMoney: events.reduce((s, t) => s + winnerPoints(t.category?.prizeMoneyByRound), 0),
+    scorePoints: path.reduce((s, t) => s + winnerPoints(t.category?.pointsByRound), 0),
+    scorePrizeMoney: path.reduce((s, t) => s + winnerPoints(t.category?.prizeMoneyByRound), 0),
     scoreTravelTimeMin: travelTimeMin,
     scoreTravelCost: travelCost,
+    conflictCount: conflicts.length,
   };
 }
 
@@ -293,6 +300,9 @@ export interface ScheduleEventView {
   winnerPrize: number | null;
   currency: string | null;
   cutoff: CutoffAndGap;
+  // True when this event collides with an earlier same-week event, so it's
+  // excluded from totals and the travel path (player-feedback P0-1).
+  conflict: boolean;
 }
 
 export interface TravelLegView {
@@ -300,6 +310,8 @@ export interface TravelLegView {
   toLabel: string;
   durationMinutes: number | null;
   costEstimate: number | null;
+  // The event this leg departs after (so the UI aligns legs to played events).
+  afterTournamentId: string;
 }
 
 export interface ScheduleDetail {
@@ -318,6 +330,8 @@ export interface ScheduleDetail {
     travelTimeMin: number | null;
     travelCost: number | null;
   };
+  // How many events collide with the played path (0 = clean schedule).
+  conflictCount: number;
 }
 
 export async function getScheduleDetail(
@@ -329,30 +343,45 @@ export async function getScheduleDetail(
     where: { id, playerId },
     include: {
       items: { include: { tournament: { include: { category: true, cutoff: true } } } },
-      travelLegs: { orderBy: { order: "asc" } },
     },
   });
   if (!schedule) return null;
 
   const pointsAt = await loadRankingLookup();
-  const events: ScheduleEventView[] = schedule.items
-    .map((i) => i.tournament)
-    .sort(byStartDate)
-    .map((t) => ({
-      tournamentId: t.id,
-      name: t.name,
-      tour: t.tour,
-      tier: t.tier,
-      surface: t.surface,
-      city: t.city,
-      country: t.country,
-      startDate: t.startDate,
-      endDate: t.endDate,
-      winnerPoints: roundValue(t.category?.pointsByRound, "W"),
-      winnerPrize: roundValue(t.category?.prizeMoneyByRound, "W"),
-      currency: t.category?.currency ?? null,
-      cutoff: buildCutoffAndGap(t.tour, t.cutoff, pointsAt, player),
-    }));
+  const tournaments = schedule.items.map((i) => i.tournament);
+
+  // Resolve the played path so we can flag same-week conflicts and recompute
+  // totals/legs over the real path — never trusting persisted totals, which may
+  // predate this fix (player-feedback P0-1).
+  const { path, conflicts } = resolvePlayedPath(tournaments);
+  const conflictIds = new Set(conflicts.map((t) => t.id));
+
+  const events: ScheduleEventView[] = [...tournaments].sort(byStartDate).map((t) => ({
+    tournamentId: t.id,
+    name: t.name,
+    tour: t.tour,
+    tier: t.tier,
+    surface: t.surface,
+    city: t.city,
+    country: t.country,
+    startDate: t.startDate,
+    endDate: t.endDate,
+    winnerPoints: roundValue(t.category?.pointsByRound, "W"),
+    winnerPrize: roundValue(t.category?.prizeMoneyByRound, "W"),
+    currency: t.category?.currency ?? null,
+    cutoff: buildCutoffAndGap(t.tour, t.cutoff, pointsAt, player),
+    conflict: conflictIds.has(t.id),
+  }));
+
+  const built = buildLegsAndScores(tournaments);
+  // built.legs[i] departs after path[i] (both derive from the same played path).
+  const legs: TravelLegView[] = built.legs.map((l, i) => ({
+    fromLabel: l.fromLabel,
+    toLabel: l.toLabel,
+    durationMinutes: l.durationMinutes,
+    costEstimate: l.costEstimate,
+    afterTournamentId: path[i].id,
+  }));
 
   return {
     id: schedule.id,
@@ -363,18 +392,14 @@ export async function getScheduleDetail(
     maxEvents: schedule.maxEvents,
     minRestDays: schedule.minRestDays,
     events,
-    legs: schedule.travelLegs.map((l) => ({
-      fromLabel: l.fromLabel,
-      toLabel: l.toLabel,
-      durationMinutes: l.durationMinutes,
-      costEstimate: l.costEstimate,
-    })),
+    legs,
     totals: {
-      points: schedule.scorePoints,
-      prize: schedule.scorePrizeMoney,
-      travelTimeMin: schedule.scoreTravelTimeMin,
-      travelCost: schedule.scoreTravelCost,
+      points: built.scorePoints,
+      prize: built.scorePrizeMoney,
+      travelTimeMin: built.scoreTravelTimeMin,
+      travelCost: built.scoreTravelCost,
     },
+    conflictCount: built.conflictCount,
   };
 }
 

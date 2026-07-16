@@ -20,6 +20,7 @@ import {
   formatTransportMode,
 } from "@/lib/format";
 import { haversineKm, estimateTravel } from "@/lib/travel";
+import { resolvePlayedPath, conflictsWith } from "@/lib/schedule-path";
 import { transportSearchUrl, lodgingSearchUrl } from "@/lib/booking-links";
 import {
   filterPickerTournaments,
@@ -93,10 +94,14 @@ export function CreateScheduleForm({
         .sort((a, b) => a.startDate.getTime() - b.startDate.getTime()),
     [selectedIds, byId],
   );
-  const totals = useMemo(() => scheduleTotals(selected), [selected]);
+  // A player plays one event per week: resolve the non-overlapping played path
+  // so totals + legs never sum simultaneous events (player-feedback P0-1).
+  const { path, conflicts } = useMemo(() => resolvePlayedPath(selected), [selected]);
+  const conflictIds = useMemo(() => new Set(conflicts.map((t) => t.id)), [conflicts]);
+  const totals = useMemo(() => scheduleTotals(path), [path]);
 
-  // Estimated travel legs between consecutive selected events (for the trip
-  // view + booking links). Mirrors the optimizer's leg estimate.
+  // Estimated travel legs between consecutive events on the played path (for the
+  // trip view + booking links). Mirrors the optimizer's leg estimate.
   const legs = useMemo(() => {
     const out: {
       from: PickerCandidate;
@@ -104,9 +109,9 @@ export function CreateScheduleForm({
       minutes: number | null;
       cost: number | null;
     }[] = [];
-    for (let i = 1; i < selected.length; i++) {
-      const from = selected[i - 1];
-      const to = selected[i];
+    for (let i = 1; i < path.length; i++) {
+      const from = path[i - 1];
+      const to = path[i];
       const hasCoords =
         from.lat != null && from.long != null && to.lat != null && to.long != null;
       const est = hasCoords
@@ -125,7 +130,7 @@ export function CreateScheduleForm({
       });
     }
     return out;
-  }, [selected]);
+  }, [path]);
 
   const [filters, setFilters] = useState<PickerFilters>(EMPTY_PICKER_FILTERS);
 
@@ -144,6 +149,13 @@ export function CreateScheduleForm({
   }
 
   function add(id: string) {
+    const candidate = byId.get(id);
+    // One event per week: block adding something that collides with the current
+    // selection (the player can only play one at a time).
+    if (candidate && conflictsWith(candidate, selected)) {
+      setSuggestion(`${candidate.name} is the same week as an event you've already added.`);
+      return;
+    }
     setSelectedIds((ids) => (ids.includes(id) ? ids : [...ids, id]));
   }
   function remove(id: string) {
@@ -333,10 +345,13 @@ export function CreateScheduleForm({
             {selected.map((t, i) => {
               const v = eventExpectedValue(t);
               const badge = ACCEPTANCE[t.acceptance];
+              const isConflict = conflictIds.has(t.id);
               return (
                 <li
                   key={t.id}
-                  className="flex items-start justify-between rounded border border-gray-200 px-3 py-2 text-sm"
+                  className={`flex items-start justify-between rounded border px-3 py-2 text-sm ${
+                    isConflict ? "border-red-200 bg-red-50" : "border-gray-200"
+                  }`}
                 >
                   <div>
                     <div>
@@ -344,11 +359,19 @@ export function CreateScheduleForm({
                       <span className="text-gray-500">· {formatDateRange(t.startDate, t.endDate)}</span>
                     </div>
                     <div className="mt-0.5 flex items-center gap-2 text-xs text-gray-500">
-                      <span>
-                        ≈{v.expectedPoints} pts{v.resultLabel ? ` · reach ~${v.resultLabel}` : ""}
-                      </span>
-                      {badge && (
-                        <span className={`rounded px-1.5 py-0.5 ${badge.className}`}>{badge.label}</span>
+                      {isConflict ? (
+                        <span className="rounded bg-red-100 px-1.5 py-0.5 text-red-700">
+                          Same-week conflict · not counted
+                        </span>
+                      ) : (
+                        <>
+                          <span>
+                            ≈{v.expectedPoints} pts{v.resultLabel ? ` · reach ~${v.resultLabel}` : ""}
+                          </span>
+                          {badge && (
+                            <span className={`rounded px-1.5 py-0.5 ${badge.className}`}>{badge.label}</span>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -489,25 +512,34 @@ export function CreateScheduleForm({
           {filteredAvailable.length === 0 && (
             <li className="text-sm text-gray-500">No events match these filters.</li>
           )}
-          {filteredAvailable.map((t) => (
-            <li
-              key={t.id}
-              className="flex items-center justify-between rounded border border-gray-200 px-3 py-2 text-sm"
-            >
-              <span>
-                {t.name}{" "}
-                <span className="text-gray-500">
-                  · {t.city}, {t.country} · {formatDateRange(t.startDate, t.endDate)} · {formatTour(t.tour)}
-                </span>
-              </span>
-              <button
-                onClick={() => add(t.id)}
-                className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
+          {filteredAvailable.map((t) => {
+            const collides = conflictsWith(t, selected);
+            return (
+              <li
+                key={t.id}
+                className="flex items-center justify-between rounded border border-gray-200 px-3 py-2 text-sm"
               >
-                Add
-              </button>
-            </li>
-          ))}
+                <span>
+                  {t.name}{" "}
+                  <span className="text-gray-500">
+                    · {t.city}, {t.country} · {formatDateRange(t.startDate, t.endDate)} · {formatTour(t.tour)}
+                  </span>
+                </span>
+                {collides ? (
+                  <span className="whitespace-nowrap text-xs text-gray-400" title="Same week as a selected event">
+                    Same week
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => add(t.id)}
+                    className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
+                  >
+                    Add
+                  </button>
+                )}
+              </li>
+            );
+          })}
         </ul>
       </div>
     </div>
