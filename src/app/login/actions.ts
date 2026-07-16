@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 
 // Result surfaced back to the login page. On success the action redirects and
@@ -31,7 +32,15 @@ export async function signup(formData: FormData): Promise<AuthResult | void> {
   const password = String(formData.get("password") ?? "");
 
   const supabase = await createClient();
-  const { data, error } = await supabase.auth.signUp({ email, password });
+  // Point the confirmation email at THIS deployment's callback route (dev,
+  // preview, or prod) rather than Supabase's fixed Site URL. Must be listed in
+  // the project's Auth → Redirect URLs allowlist or Supabase ignores it.
+  const origin = (await headers()).get("origin");
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: origin ? { emailRedirectTo: `${origin}/auth/callback` } : undefined,
+  });
 
   if (error) {
     return { status: "error", message: error.message };
