@@ -86,6 +86,7 @@ export function ProfileForm({
     return v.toString();
   });
   const [lodgingAmenities, setLodgingAmenities] = useState(csv(initial.lodgingAmenities));
+  const [tourProfileUrl, setTourProfileUrl] = useState(initial.tourProfileUrl ?? "");
 
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -155,6 +156,7 @@ export function ProfileForm({
       dietaryPrefs: parseCsv(dietaryPrefs),
       maxDistanceToVenueKm: maxDistanceKm(),
       lodgingAmenities: parseCsv(lodgingAmenities),
+      tourProfileUrl: tourProfileUrl.trim() || null,
     };
     startTransition(async () => {
       const message = await updateProfileAction(input);
@@ -216,6 +218,22 @@ export function ProfileForm({
           </div>
         </fieldset>
       </div>
+
+      <label className={label}>
+        Tour profile
+        <input
+          type="url"
+          inputMode="url"
+          value={tourProfileUrl}
+          onChange={(e) => setTourProfileUrl(e.target.value)}
+          placeholder="https://www.atptour.com/en/players/…"
+          className={field}
+        />
+        <span className="text-xs text-gray-500">
+          Link your ATP, WTA, or ITF player page. We&apos;ll use it to keep your
+          ranking up to date automatically (coming soon).
+        </span>
+      </label>
 
       {circuit !== "" && (
         <fieldset className={label}>

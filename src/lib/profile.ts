@@ -9,12 +9,14 @@ import {
 } from "@/generated/prisma/client";
 import { toursForCircuit, rankingTourForCircuit } from "@/lib/circuit";
 import { isCurrency } from "@/lib/currency";
+import { isValidTourProfileUrl } from "@/lib/tour-profile";
 
 export interface ProfileInput {
   name: string | null;
   ranking: number | null;
   circuit: Circuit | null;
   tours: Tour[];
+  tourProfileUrl: string | null;
   nationality: string[];
   homeBaseCity: string | null;
   homeBaseCountry: string | null;
@@ -90,6 +92,9 @@ export function validateProfile(input: ProfileInput): string | null {
   if (input.maxDistanceToVenueKm != null && input.maxDistanceToVenueKm < 0) {
     return "Max distance can't be negative.";
   }
+  if (input.tourProfileUrl != null && !isValidTourProfileUrl(input.tourProfileUrl)) {
+    return "Tour profile must be an ATP, WTA, or ITF player page URL.";
+  }
   return null;
 }
 
@@ -106,6 +111,7 @@ export async function updatePlayerProfile(
       tours: input.tours,
       // Ranking list derives from the circuit; drives the cutoff gap.
       rankingTour: input.circuit ? rankingTourForCircuit(input.circuit) : null,
+      tourProfileUrl: input.tourProfileUrl,
       nationality: input.nationality,
       homeBaseCity: input.homeBaseCity,
       homeBaseCountry: input.homeBaseCountry,

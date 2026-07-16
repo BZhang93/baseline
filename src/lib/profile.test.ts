@@ -28,6 +28,7 @@ const base: ProfileInput = {
   dietaryPrefs: ["gluten-free"],
   maxDistanceToVenueKm: 15,
   lodgingAmenities: ["kitchen"],
+  tourProfileUrl: null,
 };
 
 describe("validateProfile", () => {
@@ -56,6 +57,7 @@ describe("validateProfile", () => {
         dietaryPrefs: [],
         maxDistanceToVenueKm: null,
         lodgingAmenities: [],
+        tourProfileUrl: null,
       }),
     ).toBeNull();
   });
@@ -103,5 +105,14 @@ describe("validateProfile", () => {
 
   it("rejects a negative max distance", () => {
     expect(validateProfile({ ...base, maxDistanceToVenueKm: -5 })).toMatch(/negative/);
+  });
+
+  it("accepts a valid ATP/WTA/ITF tour profile URL and rejects others", () => {
+    expect(
+      validateProfile({ ...base, tourProfileUrl: "https://www.atptour.com/en/players/x/y/overview" }),
+    ).toBeNull();
+    expect(validateProfile({ ...base, tourProfileUrl: "https://example.com/me" })).toMatch(
+      /ATP, WTA, or ITF/,
+    );
   });
 });

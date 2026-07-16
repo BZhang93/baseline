@@ -36,6 +36,7 @@ export default async function ProfilePage() {
           dietaryPrefs: p.dietaryPrefs,
           maxDistanceToVenueKm: p.maxDistanceToVenueKm,
           lodgingAmenities: p.lodgingAmenities,
+          tourProfileUrl: p.tourProfileUrl,
         }}
       />
     </div>
