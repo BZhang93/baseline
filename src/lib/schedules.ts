@@ -266,20 +266,25 @@ export async function getPlayerSchedules(
 ): Promise<ScheduleSummary[]> {
   const rows = await prisma.schedule.findMany({
     where: { playerId },
-    include: { _count: { select: { items: true } } },
+    include: { items: { include: { tournament: { include: { category: true } } } } },
     orderBy: { createdAt: "desc" },
   });
-  return rows.map((s) => ({
-    id: s.id,
-    name: s.name,
-    startDate: s.startDate,
-    endDate: s.endDate,
-    eventCount: s._count.items,
-    potentialPoints: s.scorePoints,
-    potentialPrize: s.scorePrizeMoney,
-    travelTimeMin: s.scoreTravelTimeMin,
-    travelCost: s.scoreTravelCost,
-  }));
+  // Recompute played-path totals so the list agrees with the detail view; the
+  // persisted score* columns can be stale for schedules saved before P0-1.
+  return rows.map((s) => {
+    const built = buildLegsAndScores(s.items.map((i) => i.tournament));
+    return {
+      id: s.id,
+      name: s.name,
+      startDate: s.startDate,
+      endDate: s.endDate,
+      eventCount: s.items.length,
+      potentialPoints: built.scorePoints,
+      potentialPrize: built.scorePrizeMoney,
+      travelTimeMin: built.scoreTravelTimeMin,
+      travelCost: built.scoreTravelCost,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -150,9 +150,10 @@ export function CreateScheduleForm({
 
   function add(id: string) {
     const candidate = byId.get(id);
-    // One event per week: block adding something that collides with the current
-    // selection (the player can only play one at a time).
-    if (candidate && conflictsWith(candidate, selected)) {
+    // One event per week: block only against the played path (events actually
+    // kept), so an event that overlaps an already-dropped conflict is still
+    // addable when it fits the real path.
+    if (candidate && conflictsWith(candidate, path)) {
       setSuggestion(`${candidate.name} is the same week as an event you've already added.`);
       return;
     }
@@ -513,7 +514,7 @@ export function CreateScheduleForm({
             <li className="text-sm text-gray-500">No events match these filters.</li>
           )}
           {filteredAvailable.map((t) => {
-            const collides = conflictsWith(t, selected);
+            const collides = conflictsWith(t, path);
             return (
               <li
                 key={t.id}
