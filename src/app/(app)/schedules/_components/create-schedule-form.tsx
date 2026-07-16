@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import type { PickerCandidate } from "@/lib/schedules";
 import {
   optimizeSchedule,
@@ -264,13 +265,21 @@ export function CreateScheduleForm({
 
         {error && <p className="text-sm text-red-600">{error}</p>}
 
-        <button
-          onClick={submit}
-          disabled={isPending}
-          className="w-fit rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-50"
-        >
-          {isPending ? "Creating…" : "Create Schedule"}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={submit}
+            disabled={isPending}
+            className="rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-50"
+          >
+            {isPending ? "Creating…" : "Create Schedule"}
+          </button>
+          <Link
+            href="/schedules"
+            className="px-2 py-2 text-sm text-gray-500 hover:text-gray-800"
+          >
+            Cancel
+          </Link>
+        </div>
       </div>
 
       {/* Right: event picker */}
