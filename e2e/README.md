@@ -10,6 +10,10 @@ Browser tests for the real UI, complementing the Vitest unit tests in `src/`.
   `auth.setup.ts` (the `setup` project runs first).
 - `auth.setup.ts` — logs in via the form and saves the session to
   `e2e/.auth/user.json` (git-ignored).
+- `fixtures.ts` — the shared `test`/`expect` used by the specs. It adds an
+  automatic guard that **fails any test whose page logs a `console.error` or
+  throws an uncaught exception** (hydration mismatches, thrown effects, etc.).
+  Import `test`/`expect` from here, not from `@playwright/test`, to get it.
 
 ## Running
 

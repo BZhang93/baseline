@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures";
 
 // Signed-in flows. These reuse the session captured in auth.setup.ts.
 
