@@ -10,6 +10,61 @@ import {
 } from "@/lib/tournaments";
 import { roundValue } from "@/lib/round-values";
 import { resolvePlayedPath } from "@/lib/schedule-path";
+import { eventExpectedValue, type CandidateEvent } from "@/lib/optimizer";
+
+// A player's applicable rank/cutoff for one event, as the optimizer's
+// round-reached model expects. Shared by the Browse candidate loader and the
+// saved-schedule expected-value scoring.
+type ScorableTournament = {
+  id: string;
+  tour: Tour;
+  startDate: Date;
+  endDate: Date;
+  lat: number | null;
+  long: number | null;
+  category: { pointsByRound: unknown; prizeMoneyByRound: unknown } | null;
+  cutoff: { liveCutoffRank: number | null } | null;
+};
+
+function toCandidate(
+  t: ScorableTournament,
+  player: Pick<Player, "ranking" | "rankingTour"> | null,
+): CandidateEvent {
+  const eventRankingTour = rankingTourFor(t.tour);
+  const rank =
+    eventRankingTour != null && eventRankingTour === player?.rankingTour ? player.ranking : null;
+  const cutoffRank = t.cutoff?.liveCutoffRank ?? null;
+  return {
+    id: t.id,
+    startDate: t.startDate,
+    endDate: t.endDate,
+    lat: t.lat,
+    long: t.long,
+    pointsByRound: t.category?.pointsByRound ?? {},
+    prizeMoneyByRound: t.category?.prizeMoneyByRound ?? {},
+    fieldRefRank: cutoffRank,
+    playerRankForEvent: rank,
+    acceptance: computeGap(rank, cutoffRank, null, null).status,
+  };
+}
+
+// Expected points/prize over the played (non-overlapping) path — the realistic
+// round-reached value for this player, not winner-take-all (player-feedback
+// P0-3/P0-4).
+export function expectedScheduleTotals(
+  tournaments: ScorableTournament[],
+  player: Pick<Player, "ranking" | "rankingTour"> | null,
+): { expectedPoints: number; expectedPrize: number } {
+  const { path } = resolvePlayedPath(tournaments);
+  let points = 0;
+  let prize = 0;
+  for (const t of path) {
+    const v = eventExpectedValue(toCandidate(t, player));
+    points += v.expectedPoints;
+    prize += v.expectedPrize;
+  }
+  return { expectedPoints: Math.round(points), expectedPrize: Math.round(prize) };
+}
 import { haversineKm, estimateTravel, type Coord } from "@/lib/travel";
 
 // Re-exported for existing importers; the implementations live in travel.ts so
@@ -19,6 +74,12 @@ export { haversineKm, estimateTravel, type Coord };
 // The winner ("W") value of a points/prize-by-round blob, treated as 0 when
 // absent so it can be summed across a schedule's events.
 const winnerPoints = (json: unknown): number => roundValue(json, "W") ?? 0;
+
+// Trip costs are a non-negative whole number of currency units; guard against
+// negatives/NaN from either the create input or a replayed server action.
+function cleanTripCosts(n: number | null | undefined): number {
+  return Number.isFinite(n) ? Math.max(0, Math.round(n as number)) : 0;
+}
 
 // ---------------------------------------------------------------------------
 // Data access
@@ -31,6 +92,7 @@ export interface CreateScheduleInput {
   budgetCap?: number;
   maxEvents?: number;
   minRestDays?: number;
+  tripCosts?: number;
   weightPoints: number;
   weightMoney: number;
   weightTravelTime: number;
@@ -166,6 +228,7 @@ export async function createSchedule(
       budgetCap: input.budgetCap ?? null,
       maxEvents: input.maxEvents ?? null,
       minRestDays: input.minRestDays ?? null,
+      tripCosts: cleanTripCosts(input.tripCosts),
       weightPoints: input.weightPoints,
       weightMoney: input.weightMoney,
       weightTravelTime: input.weightTravelTime,
@@ -188,10 +251,11 @@ export interface ScheduleSummary {
   startDate: Date | null;
   endDate: Date | null;
   eventCount: number;
-  potentialPoints: number | null;
-  potentialPrize: number | null;
+  expectedPoints: number;
+  expectedPrize: number;
   travelTimeMin: number | null;
   travelCost: number | null;
+  netEarnings: number; // expectedPrize − travelCost − tripCosts
 }
 
 export interface PickerTournament {
@@ -230,59 +294,47 @@ export async function getScheduleCandidates(
     include: { category: true, cutoff: true },
     orderBy: { startDate: "asc" },
   });
-  return rows.map((t) => {
-    // The player's rank only applies to ATP/WTA events on their ranking tour.
-    // rankingTourFor is null for Challenger/ITF, so require a non-null match to
-    // avoid a null===null coincidence applying the rank to the wrong events.
-    const eventRankingTour = rankingTourFor(t.tour);
-    const rank =
-      eventRankingTour != null && eventRankingTour === player.rankingTour
-        ? player.ranking
-        : null;
-    const cutoffRank = t.cutoff?.liveCutoffRank ?? null;
-    return {
-      id: t.id,
-      name: t.name,
-      tour: t.tour,
-      tier: t.tier,
-      surface: t.surface,
-      city: t.city,
-      country: t.country,
-      startDate: t.startDate,
-      endDate: t.endDate,
-      lat: t.lat,
-      long: t.long,
-      pointsByRound: t.category?.pointsByRound ?? {},
-      prizeMoneyByRound: t.category?.prizeMoneyByRound ?? {},
-      fieldRefRank: cutoffRank,
-      playerRankForEvent: rank,
-      acceptance: computeGap(rank, cutoffRank, null, null).status,
-    };
-  });
+  return rows.map((t) => ({
+    // Optimizer fields (rank/cutoff/acceptance) via the shared mapping…
+    ...toCandidate(t, player),
+    // …plus the display fields the picker needs.
+    name: t.name,
+    tour: t.tour,
+    tier: t.tier,
+    surface: t.surface,
+    city: t.city,
+    country: t.country,
+  }));
 }
 
 export async function getPlayerSchedules(
   playerId: string,
+  player: Pick<Player, "ranking" | "rankingTour"> | null,
 ): Promise<ScheduleSummary[]> {
   const rows = await prisma.schedule.findMany({
     where: { playerId },
-    include: { items: { include: { tournament: { include: { category: true } } } } },
+    include: {
+      items: { include: { tournament: { include: { category: true, cutoff: true } } } },
+    },
     orderBy: { createdAt: "desc" },
   });
-  // Recompute played-path totals so the list agrees with the detail view; the
-  // persisted score* columns can be stale for schedules saved before P0-1.
+  // Recompute expected-value played-path totals so the list matches the detail
+  // view (persisted score* columns are stale winner-take-all values).
   return rows.map((s) => {
-    const built = buildLegsAndScores(s.items.map((i) => i.tournament));
+    const tournaments = s.items.map((i) => i.tournament);
+    const built = buildLegsAndScores(tournaments);
+    const { expectedPoints, expectedPrize } = expectedScheduleTotals(tournaments, player);
     return {
       id: s.id,
       name: s.name,
       startDate: s.startDate,
       endDate: s.endDate,
       eventCount: s.items.length,
-      potentialPoints: built.scorePoints,
-      potentialPrize: built.scorePrizeMoney,
+      expectedPoints,
+      expectedPrize,
       travelTimeMin: built.scoreTravelTimeMin,
       travelCost: built.scoreTravelCost,
+      netEarnings: expectedPrize - built.scoreTravelCost - s.tripCosts,
     };
   });
 }
@@ -327,13 +379,17 @@ export interface ScheduleDetail {
   budgetCap: number | null;
   maxEvents: number | null;
   minRestDays: number | null;
+  tripCosts: number;
   events: ScheduleEventView[];
   legs: TravelLegView[];
   totals: {
-    points: number | null;
-    prize: number | null;
+    // Expected (round-reached) value over the played path, not winner-take-all.
+    expectedPoints: number;
+    expectedPrize: number;
     travelTimeMin: number | null;
     travelCost: number | null;
+    // expectedPrize − travelCost − tripCosts.
+    netEarnings: number;
   };
   // How many events collide with the played path (0 = clean schedule).
   conflictCount: number;
@@ -388,6 +444,9 @@ export async function getScheduleDetail(
     afterTournamentId: path[i].id,
   }));
 
+  const { expectedPoints, expectedPrize } = expectedScheduleTotals(tournaments, player);
+  const netEarnings = expectedPrize - built.scoreTravelCost - schedule.tripCosts;
+
   return {
     id: schedule.id,
     name: schedule.name,
@@ -396,13 +455,15 @@ export async function getScheduleDetail(
     budgetCap: schedule.budgetCap,
     maxEvents: schedule.maxEvents,
     minRestDays: schedule.minRestDays,
+    tripCosts: schedule.tripCosts,
     events,
     legs,
     totals: {
-      points: built.scorePoints,
-      prize: built.scorePrizeMoney,
+      expectedPoints,
+      expectedPrize,
       travelTimeMin: built.scoreTravelTimeMin,
       travelCost: built.scoreTravelCost,
+      netEarnings,
     },
     conflictCount: built.conflictCount,
   };
@@ -442,6 +503,19 @@ export async function renameSchedule(
   const res = await prisma.schedule.updateMany({
     where: { id, playerId },
     data: { name },
+  });
+  return res.count > 0;
+}
+
+// Player-entered trip costs (lodging/food/etc.) for net-of-cost earnings.
+export async function updateScheduleTripCosts(
+  playerId: string,
+  id: string,
+  tripCosts: number,
+): Promise<boolean> {
+  const res = await prisma.schedule.updateMany({
+    where: { id, playerId },
+    data: { tripCosts: cleanTripCosts(tripCosts) },
   });
   return res.count > 0;
 }

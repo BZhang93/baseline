@@ -254,6 +254,11 @@ model Schedule {
   maxEvents  Int?
   minRestDays Int?
 
+  // Player-entered out-of-pocket costs for the swing (lodging, food, etc.),
+  // used for net-of-cost earnings (player-feedback P0-4). Travel is estimated
+  // separately; this is everything else.
+  tripCosts Int @default(0)
+
   // Player-set objective weighting (PRD §7). Default to an even split.
   weightPoints     Float @default(1)
   weightMoney      Float @default(1)
