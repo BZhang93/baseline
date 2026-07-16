@@ -75,6 +75,12 @@ export { haversineKm, estimateTravel, type Coord };
 // absent so it can be summed across a schedule's events.
 const winnerPoints = (json: unknown): number => roundValue(json, "W") ?? 0;
 
+// Trip costs are a non-negative whole number of currency units; guard against
+// negatives/NaN from either the create input or a replayed server action.
+function cleanTripCosts(n: number | null | undefined): number {
+  return Number.isFinite(n) ? Math.max(0, Math.round(n as number)) : 0;
+}
+
 // ---------------------------------------------------------------------------
 // Data access
 // ---------------------------------------------------------------------------
@@ -222,7 +228,7 @@ export async function createSchedule(
       budgetCap: input.budgetCap ?? null,
       maxEvents: input.maxEvents ?? null,
       minRestDays: input.minRestDays ?? null,
-      tripCosts: input.tripCosts ?? 0,
+      tripCosts: cleanTripCosts(input.tripCosts),
       weightPoints: input.weightPoints,
       weightMoney: input.weightMoney,
       weightTravelTime: input.weightTravelTime,
@@ -509,7 +515,7 @@ export async function updateScheduleTripCosts(
 ): Promise<boolean> {
   const res = await prisma.schedule.updateMany({
     where: { id, playerId },
-    data: { tripCosts: Math.max(0, Math.round(tripCosts)) },
+    data: { tripCosts: cleanTripCosts(tripCosts) },
   });
   return res.count > 0;
 }
