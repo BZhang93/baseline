@@ -48,6 +48,10 @@ function hasDuplicates<T>(arr: T[]): boolean {
 
 // Validates a profile; returns an error message, or null if valid.
 export function validateProfile(input: ProfileInput): string | null {
+  // Onboarding requires these three (BRA-101); the client also highlights them.
+  if (!input.name || !input.name.trim()) return "Name is required.";
+  if (input.circuit == null) return "Circuit is required.";
+  if (input.ranking == null) return "Ranking is required.";
   if (
     input.ranking != null &&
     (!Number.isInteger(input.ranking) || input.ranking < 1)

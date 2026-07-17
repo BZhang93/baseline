@@ -36,30 +36,11 @@ describe("validateProfile", () => {
     expect(validateProfile(base)).toBeNull();
   });
 
-  it("accepts an all-empty profile (nothing required)", () => {
-    expect(
-      validateProfile({
-        name: null,
-        ranking: null,
-        circuit: null,
-        tours: [],
-        nationality: [],
-        homeBaseCity: null,
-        homeBaseCountry: null,
-        surfacePrefs: [],
-        budget: null,
-        currency: "USD",
-        unitSystem: UnitSystem.IMPERIAL,
-        transportModes: [],
-        lodgingTypes: [],
-        travelSpend: 50,
-        lodgingSpend: 50,
-        dietaryPrefs: [],
-        maxDistanceToVenueKm: null,
-        lodgingAmenities: [],
-        tourProfileUrl: null,
-      }),
-    ).toBeNull();
+  it("requires name, circuit, and ranking (onboarding)", () => {
+    expect(validateProfile({ ...base, name: null })).toMatch(/Name is required/);
+    expect(validateProfile({ ...base, name: "  " })).toMatch(/Name is required/);
+    expect(validateProfile({ ...base, circuit: null })).toMatch(/Circuit is required/);
+    expect(validateProfile({ ...base, ranking: null })).toMatch(/Ranking is required/);
   });
 
   it("rejects out-of-range spend", () => {
@@ -88,9 +69,10 @@ describe("validateProfile", () => {
     ).toMatch(/isn't part of your circuit/);
   });
 
-  it("requires a circuit before selecting tours", () => {
+  it("rejects tours without a circuit (circuit is required)", () => {
+    // Circuit is now required, so a null circuit fails on the required check.
     expect(validateProfile({ ...base, circuit: null, tours: [Tour.WTA] })).toMatch(
-      /Choose a circuit/,
+      /Circuit is required/,
     );
   });
 

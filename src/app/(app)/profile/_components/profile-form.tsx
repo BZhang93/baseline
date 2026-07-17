@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   Tour,
   Surface,
@@ -53,9 +54,11 @@ const distanceUnit = (u: UnitSystem) => (u === UnitSystem.IMPERIAL ? "mi" : "km"
 export function ProfileForm({
   initial,
   email,
+  onboarding = false,
 }: {
   initial: ProfileInput;
   email: string | null;
+  onboarding?: boolean;
 }) {
   const [name, setName] = useState(initial.name ?? "");
   const [ranking, setRanking] = useState(initial.ranking?.toString() ?? "");
@@ -90,7 +93,9 @@ export function ProfileForm({
 
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [missing, setMissing] = useState<Set<string>>(new Set());
   const [isPending, startTransition] = useTransition();
+  const router = useRouter();
 
   function toggleSurface(s: Surface) {
     setSurfacePrefs((prev) =>
@@ -135,6 +140,20 @@ export function ProfileForm({
   function save() {
     setError(null);
     setSaved(false);
+
+    // Required fields (name, circuit, ranking) — highlight any that are missing.
+    const miss = new Set<string>();
+    if (!name.trim()) miss.add("name");
+    if (!circuit) miss.add("circuit");
+    const rankNum = numberOrNull(ranking);
+    if (rankNum == null || !Number.isInteger(rankNum) || rankNum < 1) miss.add("ranking");
+    if (miss.size > 0) {
+      setMissing(miss);
+      setError("Please submit required inputs.");
+      return;
+    }
+    setMissing(new Set());
+
     const budgetValue = numberOrNull(budget);
     const input: ProfileInput = {
       name: name.trim() || null,
@@ -161,22 +180,31 @@ export function ProfileForm({
     startTransition(async () => {
       const message = await updateProfileAction(input);
       if (message) setError(message);
+      else if (onboarding) router.push("/browse");
       else setSaved(true);
     });
   }
 
   const field = "rounded border border-gray-300 px-3 py-2 text-sm";
   const label = "flex flex-col gap-1 text-sm";
+  // Red border on a required field that's missing (! overrides the gray border).
+  const reqField = (key: string) => (missing.has(key) ? `${field} !border-red-500` : field);
 
   return (
     <div className="mt-6 flex max-w-xl flex-col gap-4">
+      {error && (
+        <p className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {error}
+        </p>
+      )}
+
       <div className="grid grid-cols-2 gap-3">
         <label className={label}>
-          Name
+          Name <span className="text-red-500">*</span>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className={field}
+            className={reqField("name")}
           />
         </label>
         <label className={label}>
@@ -192,18 +220,24 @@ export function ProfileForm({
 
       <div className="grid grid-cols-2 gap-3">
         <label className={label}>
-          Ranking
+          Ranking <span className="text-red-500">*</span>
           <input
             type="number"
             min={1}
             value={ranking}
             onChange={(e) => setRanking(e.target.value)}
-            className={field}
+            className={reqField("ranking")}
           />
         </label>
         <fieldset className={label}>
-          <span>Circuit</span>
-          <div className="flex items-center gap-4 py-2">
+          <span>
+            Circuit <span className="text-red-500">*</span>
+          </span>
+          <div
+            className={`flex items-center gap-4 rounded border px-2 py-2 ${
+              missing.has("circuit") ? "border-red-500" : "border-transparent"
+            }`}
+          >
             {CIRCUIT_OPTIONS.map((c) => (
               <label key={c.value} className="flex items-center gap-1.5">
                 <input
@@ -433,7 +467,6 @@ export function ProfileForm({
         />
       </label>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
       {saved && <p className="text-sm text-green-700">Saved.</p>}
 
       <button
@@ -441,7 +474,7 @@ export function ProfileForm({
         disabled={isPending}
         className="w-fit rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-50"
       >
-        {isPending ? "Saving…" : "Save Profile"}
+        {isPending ? "Saving…" : onboarding ? "Save & Continue" : "Save Profile"}
       </button>
     </div>
   );
