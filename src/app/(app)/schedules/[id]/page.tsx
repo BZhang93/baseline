@@ -162,14 +162,22 @@ export default async function ScheduleDetailPage({
 
       <div className="mt-2 flex items-start justify-between gap-4">
         <RenameName id={schedule.id} initialName={schedule.name} />
-        <form action={deleteScheduleAction.bind(null, schedule.id)}>
-          <button
-            type="submit"
-            className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:border-red-300 hover:text-red-600"
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/schedules/${schedule.id}/edit`}
+            className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:border-gray-400"
           >
-            Delete
-          </button>
-        </form>
+            Edit
+          </Link>
+          <form action={deleteScheduleAction.bind(null, schedule.id)}>
+            <button
+              type="submit"
+              className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:border-red-300 hover:text-red-600"
+            >
+              Delete
+            </button>
+          </form>
+        </div>
       </div>
 
       <p className="mt-1 text-sm text-gray-500">

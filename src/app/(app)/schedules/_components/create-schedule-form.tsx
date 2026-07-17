@@ -28,7 +28,7 @@ import {
   EMPTY_PICKER_FILTERS,
   type PickerFilters,
 } from "@/lib/picker-filter";
-import { createScheduleAction } from "../actions";
+import { createScheduleAction, updateScheduleAction } from "../actions";
 
 // Priority slider (0 = protect body/cost, 100 = maximize points) → objective
 // weights. One source of truth for both the optimizer and the saved schedule.
@@ -64,23 +64,39 @@ const ACCEPTANCE: Record<AcceptanceStatus, { label: string; className: string } 
   unknown: null,
 };
 
+export interface ScheduleFormInitial {
+  name?: string;
+  from?: string;
+  to?: string;
+  budgetCap?: string;
+  maxEvents?: string;
+  minRestDays?: string;
+  tripCosts?: string;
+  priority?: number;
+}
+
 export function CreateScheduleForm({
   candidates,
   initialSelectedIds = [],
   preferredTransport = null,
+  scheduleId,
+  initial,
 }: {
   candidates: PickerCandidate[];
   initialSelectedIds?: string[];
   preferredTransport?: TransportMode | null;
+  // When set, the form edits this schedule (saves back) instead of creating.
+  scheduleId?: string;
+  initial?: ScheduleFormInitial;
 }) {
-  const [name, setName] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const [budgetCap, setBudgetCap] = useState("");
-  const [maxEvents, setMaxEvents] = useState("");
-  const [minRestDays, setMinRestDays] = useState("");
-  const [tripCosts, setTripCosts] = useState("");
-  const [priority, setPriority] = useState(50);
+  const [name, setName] = useState(initial?.name ?? "");
+  const [from, setFrom] = useState(initial?.from ?? "");
+  const [to, setTo] = useState(initial?.to ?? "");
+  const [budgetCap, setBudgetCap] = useState(initial?.budgetCap ?? "");
+  const [maxEvents, setMaxEvents] = useState(initial?.maxEvents ?? "");
+  const [minRestDays, setMinRestDays] = useState(initial?.minRestDays ?? "");
+  const [tripCosts, setTripCosts] = useState(initial?.tripCosts ?? "");
+  const [priority, setPriority] = useState(initial?.priority ?? 50);
   const [selectedIds, setSelectedIds] = useState<string[]>(initialSelectedIds);
   const [error, setError] = useState<string | null>(null);
   const [suggestion, setSuggestion] = useState<string | null>(null);
@@ -191,18 +207,21 @@ export function CreateScheduleForm({
 
   function submit() {
     setError(null);
+    const input = {
+      name,
+      startDate: from || undefined,
+      endDate: to || undefined,
+      budgetCap: numberOrUndefined(budgetCap),
+      maxEvents: numberOrUndefined(maxEvents),
+      minRestDays: numberOrUndefined(minRestDays),
+      tripCosts: numberOrUndefined(tripCosts),
+      ...weightsFromPriority(priority),
+      tournamentIds: selectedIds,
+    };
     startTransition(async () => {
-      const message = await createScheduleAction({
-        name,
-        startDate: from || undefined,
-        endDate: to || undefined,
-        budgetCap: numberOrUndefined(budgetCap),
-        maxEvents: numberOrUndefined(maxEvents),
-        minRestDays: numberOrUndefined(minRestDays),
-        tripCosts: numberOrUndefined(tripCosts),
-        ...weightsFromPriority(priority),
-        tournamentIds: selectedIds,
-      });
+      const message = scheduleId
+        ? await updateScheduleAction(scheduleId, input)
+        : await createScheduleAction(input);
       if (message) setError(message);
     });
   }
@@ -354,10 +373,16 @@ export function CreateScheduleForm({
             disabled={isPending}
             className="rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-50"
           >
-            {isPending ? "Creating…" : "Create Schedule"}
+            {isPending
+              ? scheduleId
+                ? "Saving…"
+                : "Creating…"
+              : scheduleId
+                ? "Save Changes"
+                : "Create Schedule"}
           </button>
           <Link
-            href="/schedules"
+            href={scheduleId ? `/schedules/${scheduleId}` : "/schedules"}
             className="px-2 py-2 text-sm text-gray-500 hover:text-gray-800"
           >
             Cancel
