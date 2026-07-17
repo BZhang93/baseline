@@ -245,6 +245,87 @@ export async function createSchedule(
   return created.id;
 }
 
+export interface ScheduleEditData {
+  name: string;
+  from: string;
+  to: string;
+  budgetCap: string;
+  maxEvents: string;
+  minRestDays: string;
+  tripCosts: string;
+  priority: number;
+  eventIds: string[];
+}
+
+const toDateStr = (d: Date | null): string => (d ? d.toISOString().slice(0, 10) : "");
+
+// Pre-fill values for editing a schedule in the create form. Priority is
+// reverse-derived from the stored weights (weightPoints = 0.5 + 1.5·p).
+export async function getScheduleForEdit(
+  playerId: string,
+  id: string,
+): Promise<ScheduleEditData | null> {
+  const s = await prisma.schedule.findFirst({
+    where: { id, playerId },
+    include: { items: { orderBy: { order: "asc" } } },
+  });
+  if (!s) return null;
+  const priority = Math.max(0, Math.min(100, Math.round(((s.weightPoints - 0.5) / 1.5) * 100)));
+  return {
+    name: s.name,
+    from: toDateStr(s.startDate),
+    to: toDateStr(s.endDate),
+    budgetCap: s.budgetCap?.toString() ?? "",
+    maxEvents: s.maxEvents?.toString() ?? "",
+    minRestDays: s.minRestDays?.toString() ?? "",
+    tripCosts: s.tripCosts ? s.tripCosts.toString() : "",
+    priority,
+    eventIds: s.items.map((i) => i.tournamentId),
+  };
+}
+
+// Replaces a schedule's events + settings (add/remove events, change
+// window/constraints/priority/trip costs), recomputing legs + scores.
+export async function updateSchedule(
+  playerId: string,
+  id: string,
+  input: CreateScheduleInput,
+): Promise<boolean> {
+  const owned = await prisma.schedule.findFirst({ where: { id, playerId }, select: { id: true } });
+  if (!owned) return false;
+
+  const selected = await prisma.tournament.findMany({
+    where: { id: { in: input.tournamentIds } },
+    include: { category: true },
+  });
+  const events = [...selected].sort(byStartDate);
+  const built = buildLegsAndScores(events);
+
+  await prisma.schedule.update({
+    where: { id },
+    data: {
+      name: input.name,
+      startDate: input.startDate ? new Date(input.startDate) : null,
+      endDate: input.endDate ? new Date(input.endDate) : null,
+      budgetCap: input.budgetCap ?? null,
+      maxEvents: input.maxEvents ?? null,
+      minRestDays: input.minRestDays ?? null,
+      tripCosts: cleanTripCosts(input.tripCosts),
+      weightPoints: input.weightPoints,
+      weightMoney: input.weightMoney,
+      weightTravelTime: input.weightTravelTime,
+      weightTravelCost: input.weightTravelCost,
+      scorePoints: built.scorePoints,
+      scorePrizeMoney: built.scorePrizeMoney,
+      scoreTravelTimeMin: built.scoreTravelTimeMin,
+      scoreTravelCost: built.scoreTravelCost,
+      items: { deleteMany: {}, create: events.map((t, i) => ({ tournamentId: t.id, order: i })) },
+      travelLegs: { deleteMany: {}, create: built.legs },
+    },
+  });
+  return true;
+}
+
 export interface ScheduleSummary {
   id: string;
   name: string;
