@@ -150,16 +150,31 @@ function legBetween(a: CandidateEvent, b: CandidateEvent): { minutes: number; co
   return { minutes: est.durationMinutes, cost: est.costEstimate };
 }
 
-// Expected points/prize for one event given the player (round-reached proxy).
+// How likely the player is to actually get into the draw, from the
+// deterministic cutoff gap. Expected value is worthless if they can't enter, so
+// this scales it: a #433 player's "reach" ATP events collapse toward zero and
+// the optimizer stops recommending events they can't play. `unknown` (their own
+// lower-tier events, where we can't place them) is left unpenalized.
+const ACCEPTANCE_WEIGHT: Record<AcceptanceStatus, number> = {
+  in: 1,
+  borderline: 0.5,
+  out: 0.05,
+  unknown: 1,
+};
+
+// Expected points/prize for one event given the player: the round-reached value
+// (if they play), scaled by how likely they are to be accepted, rounded.
 export function eventExpectedValue(c: CandidateEvent): {
   expectedPoints: number;
   expectedPrize: number;
   resultLabel: string | null;
 } {
   const winProb = matchWinProbability(c.playerRankForEvent, c.fieldRefRank);
+  const accept = ACCEPTANCE_WEIGHT[c.acceptance];
   return {
-    expectedPoints: expectedRoundValue(c.pointsByRound, winProb),
-    expectedPrize: expectedRoundValue(c.prizeMoneyByRound, winProb),
+    expectedPoints: Math.round(expectedRoundValue(c.pointsByRound, winProb) * accept),
+    expectedPrize: Math.round(expectedRoundValue(c.prizeMoneyByRound, winProb) * accept),
+    // The round the player would reach *if* they get in (not acceptance-scaled).
     resultLabel: expectedResultLabel(c.pointsByRound, winProb),
   };
 }
