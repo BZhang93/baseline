@@ -37,3 +37,18 @@ export function resolvePlayedPath<T extends DatedEvent>(events: T[]): {
 export function conflictsWith(candidate: DatedEvent, selected: DatedEvent[]): boolean {
   return selected.some((s) => eventsOverlap(candidate, s));
 }
+
+// The min start → max end span of a set of events, so a schedule can show its
+// real date range instead of "No dates set" (player-feedback P2-9).
+export function eventsDateRange<T extends DatedEvent>(
+  events: T[],
+): { start: Date | null; end: Date | null } {
+  if (events.length === 0) return { start: null, end: null };
+  let start = events[0].startDate.getTime();
+  let end = events[0].endDate.getTime();
+  for (const e of events) {
+    start = Math.min(start, e.startDate.getTime());
+    end = Math.max(end, e.endDate.getTime());
+  }
+  return { start: new Date(start), end: new Date(end) };
+}

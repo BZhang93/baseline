@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { eventsOverlap, resolvePlayedPath, conflictsWith } from "./schedule-path";
+import {
+  eventsOverlap,
+  resolvePlayedPath,
+  conflictsWith,
+  eventsDateRange,
+} from "./schedule-path";
 
 const ev = (id: string, start: string, end: string) => ({
   id,
@@ -55,5 +60,20 @@ describe("conflictsWith", () => {
     expect(conflictsWith(ev("x", "2026-07-15", "2026-07-21"), selected)).toBe(true);
     expect(conflictsWith(ev("y", "2026-07-20", "2026-07-26"), selected)).toBe(false);
     expect(conflictsWith(ev("z", "2026-07-13", "2026-07-19"), [])).toBe(false);
+  });
+});
+
+describe("eventsDateRange", () => {
+  it("spans the earliest start to the latest end (input order independent)", () => {
+    const r = eventsDateRange([
+      ev("b", "2026-07-27", "2026-08-02"),
+      ev("a", "2026-07-13", "2026-07-19"),
+    ]);
+    expect(r.start).toEqual(new Date("2026-07-13"));
+    expect(r.end).toEqual(new Date("2026-08-02"));
+  });
+
+  it("is null/null for no events", () => {
+    expect(eventsDateRange([])).toEqual({ start: null, end: null });
   });
 });

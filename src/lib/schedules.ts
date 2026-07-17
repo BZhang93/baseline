@@ -9,7 +9,7 @@ import {
   type AcceptanceStatus,
 } from "@/lib/tournaments";
 import { roundValue } from "@/lib/round-values";
-import { resolvePlayedPath } from "@/lib/schedule-path";
+import { resolvePlayedPath, eventsDateRange } from "@/lib/schedule-path";
 import { eventExpectedValue, type CandidateEvent } from "@/lib/optimizer";
 
 // A player's applicable rank/cutoff for one event, as the optimizer's
@@ -324,11 +324,13 @@ export async function getPlayerSchedules(
     const tournaments = s.items.map((i) => i.tournament);
     const built = buildLegsAndScores(tournaments);
     const { expectedPoints, expectedPrize } = expectedScheduleTotals(tournaments, player);
+    // Show the real event span, falling back to the stored planning window.
+    const range = eventsDateRange(tournaments);
     return {
       id: s.id,
       name: s.name,
-      startDate: s.startDate,
-      endDate: s.endDate,
+      startDate: s.startDate ?? range.start,
+      endDate: s.endDate ?? range.end,
       eventCount: s.items.length,
       expectedPoints,
       expectedPrize,
@@ -446,12 +448,13 @@ export async function getScheduleDetail(
 
   const { expectedPoints, expectedPrize } = expectedScheduleTotals(tournaments, player);
   const netEarnings = expectedPrize - built.scoreTravelCost - schedule.tripCosts;
+  const range = eventsDateRange(tournaments);
 
   return {
     id: schedule.id,
     name: schedule.name,
-    startDate: schedule.startDate,
-    endDate: schedule.endDate,
+    startDate: schedule.startDate ?? range.start,
+    endDate: schedule.endDate ?? range.end,
     budgetCap: schedule.budgetCap,
     maxEvents: schedule.maxEvents,
     minRestDays: schedule.minRestDays,
