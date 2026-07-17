@@ -3,6 +3,7 @@ import {
   matchWinProbability,
   expectedRoundValue,
   expectedResultLabel,
+  eventExpectedValue,
   optimizeSchedule,
   type CandidateEvent,
   type OptimizerWeights,
@@ -104,6 +105,28 @@ const W = (o: Partial<OptimizerWeights>): OptimizerWeights => ({
 const A = ev({ id: "A", startDate: d(1), endDate: d(7), lat: 0, long: 0 });
 const B = ev({ id: "B", startDate: d(11), endDate: d(17), lat: 0, long: 5 });
 const C = ev({ id: "C", startDate: d(21), endDate: d(27), lat: 0, long: 10 });
+
+describe("eventExpectedValue", () => {
+  it("returns whole numbers", () => {
+    const v = eventExpectedValue(ev({ id: "x", fieldRefRank: 100, playerRankForEvent: 50 }));
+    expect(Number.isInteger(v.expectedPoints)).toBe(true);
+    expect(Number.isInteger(v.expectedPrize)).toBe(true);
+  });
+
+  it("collapses a reach ('out') event toward zero vs an 'in' event", () => {
+    const inEv = eventExpectedValue(ev({ id: "i", acceptance: "in" }));
+    const outEv = eventExpectedValue(ev({ id: "o", acceptance: "out" }));
+    // Same underlying value, but 'out' is weighted to ~5%.
+    expect(outEv.expectedPoints).toBeLessThan(inEv.expectedPoints * 0.1);
+    expect(outEv.expectedPoints).toBeGreaterThanOrEqual(0);
+  });
+
+  it("does not penalize 'in' or 'unknown' acceptance", () => {
+    const a = eventExpectedValue(ev({ id: "a", acceptance: "in" }));
+    const b = eventExpectedValue(ev({ id: "b", acceptance: "unknown" }));
+    expect(a.expectedPoints).toBe(b.expectedPoints);
+  });
+});
 
 describe("optimizeSchedule", () => {
   it("returns an empty schedule for no candidates", () => {
