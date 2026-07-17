@@ -201,6 +201,10 @@ model Player {
   tours       Tour[]
   /// Derived from `circuit` (Men's → ATP, Women's → WTA); used for the cutoff gap.
   rankingTour Tour?
+  /// Official ATP/WTA/ITF player-page URL the player links to verify their
+  /// identity; the ranking/results scraper (Phase 1 data pipeline) will read
+  /// from it to auto-update `ranking`.
+  tourProfileUrl String?
   nationality String[] // ISO country codes
 
   homeBaseCity    String?
@@ -249,6 +253,11 @@ model Schedule {
   budgetCap  Int?
   maxEvents  Int?
   minRestDays Int?
+
+  // Player-entered out-of-pocket costs for the swing (lodging, food, etc.),
+  // used for net-of-cost earnings (player-feedback P0-4). Travel is estimated
+  // separately; this is everything else.
+  tripCosts Int @default(0)
 
   // Player-set objective weighting (PRD §7). Default to an even split.
   weightPoints     Float @default(1)

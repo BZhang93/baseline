@@ -6,10 +6,19 @@ import {
   type ScheduleEventView,
   type TravelLegView,
 } from "@/lib/schedules";
-import { formatDateRange, formatMoney, formatSurface, formatTour, formatTravelTime } from "@/lib/format";
-import { flightSearchUrl, lodgingSearchUrl } from "@/lib/booking-links";
+import {
+  formatDateRange,
+  formatMoney,
+  formatSurface,
+  formatTour,
+  formatTravelTime,
+  formatTransportMode,
+} from "@/lib/format";
+import { transportSearchUrl, lodgingSearchUrl } from "@/lib/booking-links";
+import type { TransportMode } from "@/generated/prisma/enums";
 import { GapBadge } from "../../_components/gap-badge";
 import { RenameName } from "../_components/rename-name";
+import { TripCosts } from "../_components/trip-costs";
 import { removeEventAction, deleteScheduleAction } from "../actions";
 
 const externalLink =
@@ -23,13 +32,18 @@ function EventRow({
   e: ScheduleEventView;
 }) {
   return (
-    <div className="rounded-lg border border-gray-200 p-4">
+    <div className={`rounded-lg border p-4 ${e.conflict ? "border-red-200 bg-red-50" : "border-gray-200"}`}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="font-medium">{e.name}</h3>
           <p className="text-sm text-gray-500">
             {e.city}, {e.country} · {formatDateRange(e.startDate, e.endDate)}
           </p>
+          {e.conflict && (
+            <p className="mt-1 text-xs font-medium text-red-700">
+              Same-week conflict — not counted in totals
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <GapBadge gap={e.cutoff.gap} />
@@ -91,10 +105,19 @@ function EventRow({
   );
 }
 
-function LegRow({ leg }: { leg: TravelLegView }) {
+const TRANSPORT_ICON: Record<TransportMode, string> = {
+  FLIGHT: "✈",
+  TRAIN: "🚆",
+  BUS: "🚌",
+  CAR: "🚗",
+  RIDESHARE: "🚕",
+};
+
+function LegRow({ leg, mode }: { leg: TravelLegView; mode: TransportMode | null }) {
+  const label = mode ? formatTransportMode(mode).toLowerCase() : "flight";
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-500">
-      <span>✈</span>
+      <span>{mode ? TRANSPORT_ICON[mode] : "✈"}</span>
       <span>
         {leg.fromLabel} → {leg.toLabel}
       </span>
@@ -103,12 +126,12 @@ function LegRow({ leg }: { leg: TravelLegView }) {
       <span>·</span>
       <span>{formatMoney(leg.costEstimate)}</span>
       <a
-        href={flightSearchUrl(leg.fromLabel, leg.toLabel)}
+        href={transportSearchUrl(leg.fromLabel, leg.toLabel, mode)}
         target="_blank"
         rel="noopener noreferrer"
         className={`${externalLink} ml-1`}
       >
-        Book flight ↗
+        Book {label} ↗
       </a>
     </div>
   );
@@ -126,6 +149,11 @@ export default async function ScheduleDetailPage({
   const schedule = await getScheduleDetail(session.player.id, id, session.player);
   if (!schedule) notFound();
 
+  const mode = session.player.transportModes[0] ?? null;
+  // Legs are keyed to the event they depart after, so they align even when
+  // some events are same-week conflicts (excluded from the path).
+  const legByAfter = new Map(schedule.legs.map((l) => [l.afterTournamentId, l]));
+
   return (
     <div>
       <Link href="/schedules" className="text-sm text-gray-500 underline">
@@ -134,14 +162,22 @@ export default async function ScheduleDetailPage({
 
       <div className="mt-2 flex items-start justify-between gap-4">
         <RenameName id={schedule.id} initialName={schedule.name} />
-        <form action={deleteScheduleAction.bind(null, schedule.id)}>
-          <button
-            type="submit"
-            className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:border-red-300 hover:text-red-600"
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/schedules/${schedule.id}/edit`}
+            className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:border-gray-400"
           >
-            Delete
-          </button>
-        </form>
+            Edit
+          </Link>
+          <form action={deleteScheduleAction.bind(null, schedule.id)}>
+            <button
+              type="submit"
+              className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:border-red-300 hover:text-red-600"
+            >
+              Delete
+            </button>
+          </form>
+        </div>
       </div>
 
       <p className="mt-1 text-sm text-gray-500">
@@ -151,23 +187,46 @@ export default async function ScheduleDetailPage({
         · {schedule.events.length} events
       </p>
 
-      {/* Totals */}
-      <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border border-gray-200 p-4 text-sm sm:grid-cols-4">
+      {schedule.conflictCount > 0 && (
+        <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {schedule.conflictCount} event{schedule.conflictCount > 1 ? "s" : ""} overlap the same week
+          as another — a player can only play one at a time, so they&apos;re flagged below and
+          excluded from the totals. Remove them to resolve.
+        </p>
+      )}
+
+      {/* Totals — expected value (round-reached), net of costs. */}
+      <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 rounded-lg border border-gray-200 p-4 text-sm sm:grid-cols-3">
         <div>
-          <div className="text-gray-500">Potential Points</div>
-          <div>{schedule.totals.points ?? "—"}</div>
+          <div className="text-gray-500">Expected Points</div>
+          <div className="font-medium">{schedule.totals.expectedPoints}</div>
         </div>
         <div>
-          <div className="text-gray-500">Potential Prize</div>
-          <div>{formatMoney(schedule.totals.prize)}</div>
+          <div className="text-gray-500">Expected Prize</div>
+          <div className="font-medium">{formatMoney(schedule.totals.expectedPrize)}</div>
         </div>
         <div>
-          <div className="text-gray-500">Est. Travel Time</div>
-          <div>{formatTravelTime(schedule.totals.travelTimeMin)}</div>
+          <div className="text-gray-500">Est. Travel</div>
+          <div className="font-medium">
+            {formatTravelTime(schedule.totals.travelTimeMin)} · {formatMoney(schedule.totals.travelCost)}
+          </div>
         </div>
         <div>
-          <div className="text-gray-500">Est. Travel Cost</div>
-          <div>{formatMoney(schedule.totals.travelCost)}</div>
+          <div className="text-gray-500">Trip Costs (lodging, food…)</div>
+          <TripCosts id={schedule.id} initial={schedule.tripCosts} />
+        </div>
+        <div className="sm:col-span-2">
+          <div className="text-gray-500">Net After Costs</div>
+          <div
+            className={`text-lg font-semibold ${
+              schedule.totals.netEarnings < 0 ? "text-red-600" : "text-green-700"
+            }`}
+          >
+            {formatMoney(schedule.totals.netEarnings)}
+          </div>
+          <div className="text-xs text-gray-400">
+            Expected prize − estimated travel − trip costs
+          </div>
         </div>
       </div>
 
@@ -181,12 +240,15 @@ export default async function ScheduleDetailPage({
         </p>
       ) : (
         <ol className="mt-6 flex flex-col gap-4">
-          {schedule.events.map((e, i) => (
-            <li key={e.tournamentId} className="flex flex-col gap-3">
-              <EventRow scheduleId={schedule.id} e={e} />
-              {schedule.legs[i] && <LegRow leg={schedule.legs[i]} />}
-            </li>
-          ))}
+          {schedule.events.map((e) => {
+            const leg = legByAfter.get(e.tournamentId);
+            return (
+              <li key={e.tournamentId} className="flex flex-col gap-3">
+                <EventRow scheduleId={schedule.id} e={e} />
+                {leg && <LegRow leg={leg} mode={mode} />}
+              </li>
+            );
+          })}
         </ol>
       )}
     </div>

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentSession } from "@/lib/player";
 import { getPlayerSchedules, type ScheduleSummary } from "@/lib/schedules";
-import { formatDateRange, formatMoney, formatTravelTime } from "@/lib/format";
+import { formatDateRange, formatMoney } from "@/lib/format";
 
 function fmtWindow(start: Date | null, end: Date | null): string {
   return start && end ? formatDateRange(start, end) : "No dates set";
@@ -22,20 +22,22 @@ function ScheduleCard({ s }: { s: ScheduleSummary }) {
         <p className="text-sm text-gray-500">{fmtWindow(s.startDate, s.endDate)}</p>
         <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">
           <div>
-            <div className="text-gray-500">Potential Points</div>
-            <div>{s.potentialPoints ?? "—"}</div>
+            <div className="text-gray-500">Exp. Points</div>
+            <div>{s.expectedPoints}</div>
           </div>
           <div>
-            <div className="text-gray-500">Potential Prize</div>
-            <div>{formatMoney(s.potentialPrize)}</div>
+            <div className="text-gray-500">Exp. Prize</div>
+            <div>{formatMoney(s.expectedPrize)}</div>
           </div>
           <div>
-            <div className="text-gray-500">Est. Travel Time</div>
-            <div>{formatTravelTime(s.travelTimeMin)}</div>
-          </div>
-          <div>
-            <div className="text-gray-500">Est. Travel Cost</div>
+            <div className="text-gray-500">Est. Travel</div>
             <div>{formatMoney(s.travelCost)}</div>
+          </div>
+          <div>
+            <div className="text-gray-500">Net After Costs</div>
+            <div className={s.netEarnings < 0 ? "text-red-600" : ""}>
+              {formatMoney(s.netEarnings)}
+            </div>
           </div>
         </div>
       </Link>
@@ -46,7 +48,7 @@ function ScheduleCard({ s }: { s: ScheduleSummary }) {
 export default async function SchedulesPage() {
   const session = await getCurrentSession();
   if (!session) redirect("/login");
-  const schedules = await getPlayerSchedules(session.player.id);
+  const schedules = await getPlayerSchedules(session.player.id, session.player);
 
   return (
     <div>
@@ -66,8 +68,8 @@ export default async function SchedulesPage() {
           <Link href="/schedules/new" className="underline">
             Create your first
           </Link>{" "}
-          to start mapping out your season. Potential points and prize assume you
-          win every event.
+          to start mapping out your season. Points and prize are expected values
+          based on your ranking, net of estimated travel and your trip costs.
         </p>
       ) : (
         <ul className="mt-4 grid gap-3">

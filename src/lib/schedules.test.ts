@@ -14,12 +14,16 @@ function ev(
   w = 250,
   prize = 100000,
 ): LegEvent {
+  const start = new Date(startDate);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6); // a tournament week (Mon–Sun)
   return {
     city: "City",
     country: "Country",
     lat,
     long,
-    startDate: new Date(startDate),
+    startDate: start,
+    endDate: end,
     category: { pointsByRound: { W: w }, prizeMoneyByRound: { W: prize } },
   };
 }
@@ -91,6 +95,17 @@ describe("buildLegsAndScores", () => {
     expect(built.legs[0].durationMinutes).toBeNull();
     expect(built.legs[0].costEstimate).toBeNull();
     expect(built.scoreTravelCost).toBe(0);
+  });
+
+  it("only totals the played path — same-week events are dropped, not summed", () => {
+    const built = buildLegsAndScores([
+      ev("2026-07-13", 38.1157, 13.3615, 250, 100000), // week 1
+      ev("2026-07-14", 50.0755, 14.4378, 250, 100000), // week 1 — collides, dropped
+      ev("2026-07-20", 41.9028, 12.4964, 250, 100000), // week 2
+    ]);
+    expect(built.conflictCount).toBe(1);
+    expect(built.scorePoints).toBe(500); // two counted, not 750
+    expect(built.legs).toHaveLength(1); // one leg across the 2-event path
   });
 });
 

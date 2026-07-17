@@ -5,7 +5,9 @@ import { revalidatePath } from "next/cache";
 import { getCurrentSession } from "@/lib/player";
 import {
   createSchedule,
+  updateSchedule,
   renameSchedule,
+  updateScheduleTripCosts,
   removeEventFromSchedule,
   deleteSchedule,
   type CreateScheduleInput,
@@ -31,6 +33,28 @@ export async function createScheduleAction(
   redirect(`/schedules/${id}`);
 }
 
+export async function updateScheduleAction(
+  id: string,
+  input: CreateScheduleInput,
+): Promise<string | void> {
+  const session = await getCurrentSession();
+  if (!session) return "You're not signed in.";
+
+  if (!input.name?.trim()) return "Give your schedule a name.";
+  if (!input.tournamentIds || input.tournamentIds.length === 0) {
+    return "Add at least one tournament.";
+  }
+  if (input.startDate && input.endDate && input.endDate < input.startDate) {
+    return "End date can't be before the start date.";
+  }
+
+  const ok = await updateSchedule(session.player.id, id, input);
+  if (!ok) return "Schedule not found.";
+  revalidatePath(`/schedules/${id}`);
+  revalidatePath("/schedules");
+  redirect(`/schedules/${id}`);
+}
+
 export async function renameScheduleAction(
   id: string,
   name: string,
@@ -40,6 +64,14 @@ export async function renameScheduleAction(
   if (!name.trim()) return "Name can't be empty.";
   const ok = await renameSchedule(session.player.id, id, name.trim());
   if (!ok) return "Schedule not found.";
+  revalidatePath(`/schedules/${id}`);
+  revalidatePath("/schedules");
+}
+
+export async function updateTripCostsAction(id: string, tripCosts: number): Promise<void> {
+  const session = await getCurrentSession();
+  if (!session) return;
+  await updateScheduleTripCosts(session.player.id, id, tripCosts);
   revalidatePath(`/schedules/${id}`);
   revalidatePath("/schedules");
 }
