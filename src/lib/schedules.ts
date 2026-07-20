@@ -24,6 +24,7 @@ import {
   type TransportPriority,
 } from "@/lib/transport";
 import type { TransportMode } from "@/generated/prisma/enums";
+import { arrivalDate, isQualiArrival } from "@/lib/quali";
 
 // A player's applicable rank/cutoff for one event, as the optimizer's
 // round-reached model expects. Shared by the Browse candidate loader and the
@@ -539,6 +540,11 @@ export interface ScheduleEventView {
   // True when this event collides with an earlier same-week event, so it's
   // excluded from totals and the travel path (player-feedback P0-1).
   conflict: boolean;
+  // When the player enters qualifying (Challenger/ITF, below the cut), the date
+  // they actually arrive — the quali sign-in, earlier than main-draw start.
+  arrivalDate: Date;
+  // True when arrivalDate is a qualifying arrival (before main-draw start).
+  qualiArrival: boolean;
 }
 
 export interface TravelLegView {
@@ -608,22 +614,35 @@ export async function getScheduleDetail(
   const { path, conflicts } = resolvePlayedPath(tournaments);
   const conflictIds = new Set(conflicts.map((t) => t.id));
 
-  const events: ScheduleEventView[] = [...tournaments].sort(byStartDate).map((t) => ({
-    tournamentId: t.id,
-    name: t.name,
-    tour: t.tour,
-    tier: t.tier,
-    surface: t.surface,
-    city: t.city,
-    country: t.country,
-    startDate: t.startDate,
-    endDate: t.endDate,
-    winnerPoints: roundValue(t.category?.pointsByRound, "W"),
-    winnerPrize: roundValue(t.category?.prizeMoneyByRound, "W"),
-    currency: t.category?.currency ?? null,
-    cutoff: buildCutoffAndGap(t.tour, t.cutoff, pointsAt, player),
-    conflict: conflictIds.has(t.id),
-  }));
+  const events: ScheduleEventView[] = [...tournaments].sort(byStartDate).map((t) => {
+    const cutoff = buildCutoffAndGap(t.tour, t.cutoff, pointsAt, player);
+    const qt = { tour: t.tour, startDate: t.startDate, qualiStartDate: t.qualiStartDate };
+    // Quali entry is a direct rank-vs-cutoff check: Challenger/ITF acceptance is
+    // always "unknown" (no points model), so we compare the player's ranking to
+    // the event's live cutoff rank (same circuit scale).
+    const rank = player?.ranking ?? null;
+    const cutoffRank = t.cutoff?.liveCutoffRank ?? null;
+    return {
+      tournamentId: t.id,
+      name: t.name,
+      tour: t.tour,
+      tier: t.tier,
+      surface: t.surface,
+      city: t.city,
+      country: t.country,
+      startDate: t.startDate,
+      endDate: t.endDate,
+      winnerPoints: roundValue(t.category?.pointsByRound, "W"),
+      winnerPrize: roundValue(t.category?.prizeMoneyByRound, "W"),
+      currency: t.category?.currency ?? null,
+      cutoff,
+      conflict: conflictIds.has(t.id),
+      // Quali entrants (Challenger/ITF, below the cut) arrive for the weekend
+      // qualifying, earlier than main-draw Monday (player-feedback P1-6).
+      arrivalDate: arrivalDate(qt, rank, cutoffRank),
+      qualiArrival: isQualiArrival(qt, rank, cutoffRank),
+    };
+  });
 
   const built = buildLegsAndScores(tournaments, routeOptionsFor(schedule, player?.transportModes ?? []));
   // built.legs[i] departs after path[i] to path[i + 1] (both derive from the
@@ -650,11 +669,17 @@ export async function getScheduleDetail(
   const { expectedPoints, expectedPrize } = expectedScheduleTotals(tournaments, player);
   const netEarnings = expectedPrize - built.scoreTravelCost - schedule.tripCosts;
   const range = eventsDateRange(tournaments);
+  // The trip begins at the earliest arrival — a quali entrant's first event
+  // pulls the window a couple days before main-draw Monday (player-feedback P1-6).
+  const earliestArrival = events.reduce<Date | null>(
+    (min, e) => (min == null || e.arrivalDate < min ? e.arrivalDate : min),
+    null,
+  );
 
   return {
     id: schedule.id,
     name: schedule.name,
-    startDate: schedule.startDate ?? range.start,
+    startDate: schedule.startDate ?? earliestArrival ?? range.start,
     endDate: schedule.endDate ?? range.end,
     budgetCap: schedule.budgetCap,
     maxEvents: schedule.maxEvents,

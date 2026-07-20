@@ -126,6 +126,10 @@ model Tournament {
   surface     Surface
   startDate   DateTime
   endDate     DateTime
+  // Qualifying sign-in date (player-feedback P1-6). Challenger/ITF quali is the
+  // weekend before the main draw, so quali entrants arrive earlier. Null until
+  // the scraper populates it; the itinerary falls back to a startDate−2d heuristic.
+  qualiStartDate DateTime?
   drawSize    Int
   entryDeadline DateTime?
 

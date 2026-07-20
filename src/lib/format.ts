@@ -16,6 +16,11 @@ export function formatDateRange(start: Date, end: Date): string {
   return `${s}–${e}`;
 }
 
+// "Jul 11" — a single date, UTC-based to match stored dates.
+export function formatDate(d: Date): string {
+  return `${MONTH[d.getUTCMonth()]} ${d.getUTCDate()}`;
+}
+
 export function formatMoney(amount: number | null, currency = "USD"): string {
   if (amount == null) return "—";
   return new Intl.NumberFormat("en-US", {

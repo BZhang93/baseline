@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentSession } from "@/lib/player";
 import { getScheduleDetail, type ScheduleEventView } from "@/lib/schedules";
 import {
+  formatDate,
   formatDateRange,
   formatMoney,
   formatSurface,
@@ -34,6 +35,11 @@ function EventRow({
           <p className="text-sm text-gray-500">
             {e.city}, {e.country} · {formatDateRange(e.startDate, e.endDate)}
           </p>
+          {e.qualiArrival && (
+            <p className="mt-1 text-xs font-medium text-amber-700">
+              Qualifying from {formatDate(e.arrivalDate)} — arrive before main draw
+            </p>
+          )}
           {e.conflict && (
             <p className="mt-1 text-xs font-medium text-red-700">
               Same-week conflict — not counted in totals
@@ -88,7 +94,7 @@ function EventRow({
       </div>
       <div className="mt-3">
         <a
-          href={lodgingSearchUrl(e.city, e.country, e.startDate)}
+          href={lodgingSearchUrl(e.city, e.country, e.arrivalDate)}
           target="_blank"
           rel="noopener noreferrer"
           className={externalLink}
