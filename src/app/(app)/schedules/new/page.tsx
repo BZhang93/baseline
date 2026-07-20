@@ -30,7 +30,7 @@ export default async function NewSchedulePage({
         <CreateScheduleForm
           candidates={candidates}
           initialSelectedIds={initialSelectedIds}
-          preferredTransport={session.player.transportModes[0] ?? null}
+          transportModes={session.player.transportModes}
         />
       </div>
     </div>

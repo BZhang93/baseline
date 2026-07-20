@@ -9,9 +9,11 @@ import {
   renameSchedule,
   updateScheduleTripCosts,
   removeEventFromSchedule,
+  setScheduleLegMode,
   deleteSchedule,
   type CreateScheduleInput,
 } from "@/lib/schedules";
+import type { TransportMode } from "@/generated/prisma/enums";
 
 // Returned string is an error message shown to the user; success redirects.
 export async function createScheduleAction(
@@ -82,6 +84,21 @@ export async function removeEventAction(id: string, tournamentId: string): Promi
   if (!session) return;
   await removeEventFromSchedule(session.player.id, id, tournamentId);
   revalidatePath(`/schedules/${id}`);
+  revalidatePath("/schedules");
+}
+
+// Override (or clear, when mode is null) one leg's transport mode; recomputes
+// the schedule's travel + net totals (player-feedback P1-7a).
+export async function setLegModeAction(
+  scheduleId: string,
+  fromTournamentId: string,
+  toTournamentId: string,
+  mode: TransportMode | null,
+): Promise<void> {
+  const session = await getCurrentSession();
+  if (!session) return;
+  await setScheduleLegMode(session.player.id, scheduleId, fromTournamentId, toTournamentId, mode);
+  revalidatePath(`/schedules/${scheduleId}`);
   revalidatePath("/schedules");
 }
 

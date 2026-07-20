@@ -18,6 +18,7 @@ function ev(
   const end = new Date(start);
   end.setDate(end.getDate() + 6); // a tournament week (Mon–Sun)
   return {
+    id: startDate, // unique per event in these fixtures
     city: "City",
     country: "Country",
     lat,

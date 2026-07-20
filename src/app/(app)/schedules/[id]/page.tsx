@@ -1,24 +1,19 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentSession } from "@/lib/player";
-import {
-  getScheduleDetail,
-  type ScheduleEventView,
-  type TravelLegView,
-} from "@/lib/schedules";
+import { getScheduleDetail, type ScheduleEventView } from "@/lib/schedules";
 import {
   formatDateRange,
   formatMoney,
   formatSurface,
   formatTour,
   formatTravelTime,
-  formatTransportMode,
 } from "@/lib/format";
-import { transportSearchUrl, lodgingSearchUrl } from "@/lib/booking-links";
-import type { TransportMode } from "@/generated/prisma/enums";
+import { lodgingSearchUrl } from "@/lib/booking-links";
 import { GapBadge } from "../../_components/gap-badge";
 import { RenameName } from "../_components/rename-name";
 import { TripCosts } from "../_components/trip-costs";
+import { LegModeControl } from "../_components/leg-mode-control";
 import { removeEventAction, deleteScheduleAction } from "../actions";
 
 const externalLink =
@@ -105,38 +100,6 @@ function EventRow({
   );
 }
 
-const TRANSPORT_ICON: Record<TransportMode, string> = {
-  FLIGHT: "✈",
-  TRAIN: "🚆",
-  BUS: "🚌",
-  CAR: "🚗",
-  RIDESHARE: "🚕",
-};
-
-function LegRow({ leg, mode }: { leg: TravelLegView; mode: TransportMode | null }) {
-  const label = mode ? formatTransportMode(mode).toLowerCase() : "flight";
-  return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-gray-500">
-      <span>{mode ? TRANSPORT_ICON[mode] : "✈"}</span>
-      <span>
-        {leg.fromLabel} → {leg.toLabel}
-      </span>
-      <span>·</span>
-      <span>{formatTravelTime(leg.durationMinutes)}</span>
-      <span>·</span>
-      <span>{formatMoney(leg.costEstimate)}</span>
-      <a
-        href={transportSearchUrl(leg.fromLabel, leg.toLabel, mode)}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={`${externalLink} ml-1`}
-      >
-        Book {label} ↗
-      </a>
-    </div>
-  );
-}
-
 export default async function ScheduleDetailPage({
   params,
 }: {
@@ -149,7 +112,6 @@ export default async function ScheduleDetailPage({
   const schedule = await getScheduleDetail(session.player.id, id, session.player);
   if (!schedule) notFound();
 
-  const mode = session.player.transportModes[0] ?? null;
   // Legs are keyed to the event they depart after, so they align even when
   // some events are same-week conflicts (excluded from the path).
   const legByAfter = new Map(schedule.legs.map((l) => [l.afterTournamentId, l]));
@@ -245,7 +207,7 @@ export default async function ScheduleDetailPage({
             return (
               <li key={e.tournamentId} className="flex flex-col gap-3">
                 <EventRow scheduleId={schedule.id} e={e} />
-                {leg && <LegRow leg={leg} mode={mode} />}
+                {leg && <LegModeControl scheduleId={schedule.id} leg={leg} />}
               </li>
             );
           })}
