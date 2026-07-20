@@ -271,6 +271,11 @@ model Schedule {
   scoreTravelTimeMin Int?
   scoreTravelCost    Int?
 
+  // Per-leg transport-mode overrides (player-feedback P1-7a), keyed by the
+  // "fromTournamentId>toTournamentId" pair so they survive event edits. A leg
+  // with no entry uses the router's recommended mode.
+  legModeOverrides Json?
+
   items      ScheduleItem[]
   travelLegs TravelLeg[]
 
