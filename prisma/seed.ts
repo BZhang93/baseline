@@ -9,7 +9,7 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, Surface, Tour, TravelMode } from "../src/generated/prisma/client";
-import { loadIntoDatabase } from "../src/lib/data/load";
+import { promoteIfValid, formatValidationReport } from "../src/lib/data/ingest";
 import { seedDataSource, AS_OF, SEASON } from "../src/lib/data/seed-source";
 
 const connectionString = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
@@ -19,8 +19,17 @@ const DEMO_USER_ID = "seed:maya-demo";
 const DEMO_SCHEDULE_ID = "seed-schedule-clay-swing";
 
 async function main() {
-  // 1. Load reference/tour data through the shared loader.
-  const result = await loadIntoDatabase(prisma, seedDataSource);
+  // 1. Load reference/tour data through the validate→promote gate — the same
+  // checkpoint the scraper will use. Bad data aborts before touching live tables.
+  const ingest = await promoteIfValid(prisma, seedDataSource, {
+    expectedSeason: SEASON,
+    expectedMonths: [7], // v1 scope: July 2026
+  });
+  console.log(formatValidationReport(ingest.report));
+  if (!ingest.promoted) {
+    throw new Error("Seed validation failed — live data left unchanged.");
+  }
+  const result = ingest.result!;
   console.log(
     `Loaded: ${result.categories} categories, ${result.tournaments} tournaments, ` +
       `${result.cutoffs} cutoffs, ${result.rankings} rankings.`,

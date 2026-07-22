@@ -62,3 +62,11 @@ export interface DataSource {
   tournaments(): Promise<TournamentInput[]>;
   rankings(): Promise<RankingInput[]>;
 }
+
+// A DataSource's fetched output, held in memory so it can be validated before
+// anything touches the live tables (the validate→promote gate, BRA-36).
+export interface LoadedData {
+  categories: CategoryInput[];
+  tournaments: TournamentInput[];
+  rankings: RankingInput[];
+}
