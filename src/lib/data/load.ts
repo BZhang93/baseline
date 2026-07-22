@@ -1,5 +1,5 @@
 import type { PrismaClient } from "@/generated/prisma/client";
-import type { DataSource } from "./types";
+import type { DataSource, LoadedData } from "./types";
 import { circuitForTournament } from "@/lib/circuit";
 
 export interface LoadResult {
@@ -14,17 +14,36 @@ function categoryKey(tour: string, tier: string, season: number): string {
   return `${tour}:${tier}:${season}`;
 }
 
-// Loads a DataSource into the database using upserts on natural keys, so it is
-// safe to run repeatedly (idempotent). Both the seed and the scraper reuse this.
-export async function loadIntoDatabase(
-  prisma: PrismaClient,
-  source: DataSource,
-): Promise<LoadResult> {
+// Fetches all of a DataSource's data into memory so it can be validated as a
+// unit before any of it is promoted to the live tables (BRA-36 gate).
+export async function fetchDataSource(source: DataSource): Promise<LoadedData> {
   const [categories, tournaments, rankings] = await Promise.all([
     source.categories(),
     source.tournaments(),
     source.rankings(),
   ]);
+  return { categories, tournaments, rankings };
+}
+
+// Loads a DataSource into the database using upserts on natural keys, so it is
+// safe to run repeatedly (idempotent). Both the seed and the scraper reuse this.
+// Prefer `promoteIfValid` (ingest.ts) when the data is untrusted — it validates
+// before calling this.
+export async function loadIntoDatabase(
+  prisma: PrismaClient,
+  source: DataSource,
+): Promise<LoadResult> {
+  return loadData(prisma, await fetchDataSource(source), source.name);
+}
+
+// Writes already-fetched data to the live tables. Split from the fetch so the
+// validate→promote gate can check the data first without fetching twice.
+export async function loadData(
+  prisma: PrismaClient,
+  data: LoadedData,
+  sourceName: string,
+): Promise<LoadResult> {
+  const { categories, tournaments, rankings } = data;
 
   // 1. Categories (ground-truth points/prize per tier/season).
   for (const c of categories) {
@@ -104,7 +123,7 @@ export async function loadIntoDatabase(
 
   if (missingCategories.size > 0) {
     console.warn(
-      `[loadIntoDatabase] ${source.name}: no TournamentCategory matched for ` +
+      `[loadIntoDatabase] ${sourceName}: no TournamentCategory matched for ` +
         `${missingCategories.size} tier/season key(s); those events have no ` +
         `points/prize: ${[...missingCategories].join(", ")}`,
     );
