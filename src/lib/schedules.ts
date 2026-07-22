@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma/client";
 import type { Tour, Surface, Player } from "@/generated/prisma/client";
 import {
   loadRankingLookup,
@@ -11,6 +12,19 @@ import {
 import { roundValue } from "@/lib/round-values";
 import { resolvePlayedPath, eventsDateRange } from "@/lib/schedule-path";
 import { eventExpectedValue, type CandidateEvent } from "@/lib/optimizer";
+import {
+  routeLeg,
+  legKey,
+  parseLegModeOverrides,
+  transportPriorityFromWeightPoints,
+  modeFeasible,
+  type LegRouting,
+  type LegAlternative,
+  type LegModeOverrides,
+  type TransportPriority,
+} from "@/lib/transport";
+import type { TransportMode } from "@/generated/prisma/enums";
+import { arrivalDate, isQualiArrival } from "@/lib/quali";
 
 // A player's applicable rank/cutoff for one event, as the optimizer's
 // round-reached model expects. Shared by the Browse candidate loader and the
@@ -122,6 +136,7 @@ export function parseEventIdsParam(
 
 // The event fields needed to build legs + score totals.
 export interface LegEvent {
+  id: string;
   city: string;
   country: string;
   lat: number | null;
@@ -130,6 +145,16 @@ export interface LegEvent {
   endDate: Date;
   category: { pointsByRound: unknown; prizeMoneyByRound: unknown } | null;
 }
+
+// Inputs that steer per-leg mode selection (player-feedback P1-7). Priority and
+// prefs come from the schedule + profile; overrides are the player's per-leg picks.
+export interface RouteOptions {
+  prefs: TransportMode[];
+  priority: TransportPriority;
+  overrides: LegModeOverrides;
+}
+
+const DEFAULT_ROUTE_OPTS: RouteOptions = { prefs: [], priority: "balanced", overrides: {} };
 
 export interface LegInput {
   order: number;
@@ -146,6 +171,12 @@ export interface LegInput {
 
 export interface LegsAndScores {
   legs: LegInput[];
+  // Per-leg routing (recommended mode + alternatives), aligned with `legs`;
+  // null when the leg lacks coordinates to estimate from.
+  routings: (LegRouting | null)[];
+  // The subset of the requested overrides that actually matched a leg and was
+  // still feasible — the pruned set to persist (stale/infeasible picks drop out).
+  activeOverrides: LegModeOverrides;
   scorePoints: number;
   scorePrizeMoney: number;
   scoreTravelTimeMin: number;
@@ -157,10 +188,15 @@ export interface LegsAndScores {
 
 // Builds estimated travel legs + score totals over the *played path* — the
 // chronological, non-overlapping subset of the events (same-week collisions are
-// dropped, never summed). Accepts events in any order. Shared by create + edit.
-export function buildLegsAndScores(events: LegEvent[]): LegsAndScores {
+// dropped, never summed). Accepts events in any order. Each leg's mode is chosen
+// by the multi-modal router (player-feedback P1-7): the player's Priority + ranked
+// transport prefs pick a recommended mode, honoring any per-leg override, and the
+// leg's time/cost reflect that mode. Shared by create + edit.
+export function buildLegsAndScores(events: LegEvent[], opts: RouteOptions = DEFAULT_ROUTE_OPTS): LegsAndScores {
   const { path, conflicts } = resolvePlayedPath(events);
   const legs: LegInput[] = [];
+  const routings: (LegRouting | null)[] = [];
+  const activeOverrides: LegModeOverrides = {};
   let travelTimeMin = 0;
   let travelCost = 0;
 
@@ -169,12 +205,20 @@ export function buildLegsAndScores(events: LegEvent[]): LegsAndScores {
     const to = path[i];
     let durationMinutes: number | null = null;
     let costEstimate: number | null = null;
+    let routing: LegRouting | null = null;
     if (from.lat != null && from.long != null && to.lat != null && to.long != null) {
-      const est = estimateTravel(
-        haversineKm({ lat: from.lat, long: from.long }, { lat: to.lat, long: to.long }),
+      const distanceKm = haversineKm(
+        { lat: from.lat, long: from.long },
+        { lat: to.lat, long: to.long },
       );
-      durationMinutes = est.durationMinutes;
-      costEstimate = est.costEstimate;
+      const key = legKey(from.id, to.id);
+      const override = opts.overrides[key] ?? null;
+      routing = routeLeg(distanceKm, opts.prefs, opts.priority, override);
+      // The override "took" only if it was feasible for this leg; otherwise the
+      // router fell back and we drop the stale pick from the persisted set.
+      if (override && routing.recommended.mode === override) activeOverrides[key] = override;
+      durationMinutes = routing.recommended.durationMinutes;
+      costEstimate = routing.recommended.costEstimate;
       travelTimeMin += durationMinutes;
       travelCost += costEstimate;
     }
@@ -190,16 +234,52 @@ export function buildLegsAndScores(events: LegEvent[]): LegsAndScores {
       costEstimate,
       date: to.startDate,
     });
+    routings.push(routing);
   }
 
   return {
     legs,
+    routings,
+    activeOverrides,
     scorePoints: path.reduce((s, t) => s + winnerPoints(t.category?.pointsByRound), 0),
     scorePrizeMoney: path.reduce((s, t) => s + winnerPoints(t.category?.prizeMoneyByRound), 0),
     scoreTravelTimeMin: travelTimeMin,
     scoreTravelCost: travelCost,
     conflictCount: conflicts.length,
   };
+}
+
+// The route options for a stored schedule, combining the player's transport
+// prefs, the priority derived from the schedule's weighting, and any saved
+// per-leg overrides.
+function routeOptionsFor(
+  schedule: { weightPoints: number; legModeOverrides: unknown },
+  prefs: TransportMode[],
+): RouteOptions {
+  return {
+    prefs,
+    priority: transportPriorityFromWeightPoints(schedule.weightPoints),
+    overrides: parseLegModeOverrides(schedule.legModeOverrides),
+  };
+}
+
+// Prisma-writable value for the `legModeOverrides` Json column: the map when
+// non-empty, else DB NULL (keeps rows clean once a player reverts every leg).
+function overridesForStorage(
+  overrides: LegModeOverrides,
+): Prisma.InputJsonValue | typeof Prisma.DbNull {
+  return Object.keys(overrides).length > 0
+    ? (overrides as Prisma.InputJsonValue)
+    : Prisma.DbNull;
+}
+
+// The player's ranked transport preferences, for routing this schedule's legs.
+async function transportPrefsFor(playerId: string): Promise<TransportMode[]> {
+  const player = await prisma.player.findUnique({
+    where: { id: playerId },
+    select: { transportModes: true },
+  });
+  return player?.transportModes ?? [];
 }
 
 function byStartDate<T extends { startDate: Date }>(a: T, b: T): number {
@@ -217,7 +297,12 @@ export async function createSchedule(
     include: { category: true },
   });
   const events = [...selected].sort(byStartDate);
-  const built = buildLegsAndScores(events);
+  const prefs = await transportPrefsFor(playerId);
+  const built = buildLegsAndScores(events, {
+    prefs,
+    priority: transportPriorityFromWeightPoints(input.weightPoints),
+    overrides: {},
+  });
 
   const created = await prisma.schedule.create({
     data: {
@@ -291,7 +376,10 @@ export async function updateSchedule(
   id: string,
   input: CreateScheduleInput,
 ): Promise<boolean> {
-  const owned = await prisma.schedule.findFirst({ where: { id, playerId }, select: { id: true } });
+  const owned = await prisma.schedule.findFirst({
+    where: { id, playerId },
+    select: { id: true, legModeOverrides: true, player: { select: { transportModes: true } } },
+  });
   if (!owned) return false;
 
   const selected = await prisma.tournament.findMany({
@@ -299,7 +387,13 @@ export async function updateSchedule(
     include: { category: true },
   });
   const events = [...selected].sort(byStartDate);
-  const built = buildLegsAndScores(events);
+  // Keep the player's per-leg mode picks across the edit; buildLegsAndScores
+  // prunes any that no longer match a leg (removed events / new distances).
+  const built = buildLegsAndScores(events, {
+    prefs: owned.player.transportModes,
+    priority: transportPriorityFromWeightPoints(input.weightPoints),
+    overrides: parseLegModeOverrides(owned.legModeOverrides),
+  });
 
   await prisma.schedule.update({
     where: { id },
@@ -319,6 +413,7 @@ export async function updateSchedule(
       scorePrizeMoney: built.scorePrizeMoney,
       scoreTravelTimeMin: built.scoreTravelTimeMin,
       scoreTravelCost: built.scoreTravelCost,
+      legModeOverrides: overridesForStorage(built.activeOverrides),
       items: { deleteMany: {}, create: events.map((t, i) => ({ tournamentId: t.id, order: i })) },
       travelLegs: { deleteMany: {}, create: built.legs },
     },
@@ -390,7 +485,7 @@ export async function getScheduleCandidates(
 
 export async function getPlayerSchedules(
   playerId: string,
-  player: Pick<Player, "ranking" | "rankingTour"> | null,
+  player: Pick<Player, "ranking" | "rankingTour" | "transportModes"> | null,
 ): Promise<ScheduleSummary[]> {
   const rows = await prisma.schedule.findMany({
     where: { playerId },
@@ -399,11 +494,13 @@ export async function getPlayerSchedules(
     },
     orderBy: { createdAt: "desc" },
   });
+  const prefs = player?.transportModes ?? [];
   // Recompute expected-value played-path totals so the list matches the detail
-  // view (persisted score* columns are stale winner-take-all values).
+  // view (persisted score* columns are stale winner-take-all values), routing
+  // legs with the same prefs/priority/overrides the detail view uses.
   return rows.map((s) => {
     const tournaments = s.items.map((i) => i.tournament);
-    const built = buildLegsAndScores(tournaments);
+    const built = buildLegsAndScores(tournaments, routeOptionsFor(s, prefs));
     const { expectedPoints, expectedPrize } = expectedScheduleTotals(tournaments, player);
     // Show the real event span, falling back to the stored planning window.
     const range = eventsDateRange(tournaments);
@@ -443,6 +540,11 @@ export interface ScheduleEventView {
   // True when this event collides with an earlier same-week event, so it's
   // excluded from totals and the travel path (player-feedback P0-1).
   conflict: boolean;
+  // When the player enters qualifying (Challenger/ITF, below the cut), the date
+  // they actually arrive — the quali sign-in, earlier than main-draw start.
+  arrivalDate: Date;
+  // True when arrivalDate is a qualifying arrival (before main-draw start).
+  qualiArrival: boolean;
 }
 
 export interface TravelLegView {
@@ -452,6 +554,18 @@ export interface TravelLegView {
   costEstimate: number | null;
   // The event this leg departs after (so the UI aligns legs to played events).
   afterTournamentId: string;
+  // The event this leg arrives at — with afterTournamentId, the key used to
+  // override this leg's mode (player-feedback P1-7a).
+  toTournamentId: string;
+  // Recommended transport mode + collapsed alternatives (player-feedback P1-7).
+  // null mode when the leg has no coordinates to estimate from.
+  mode: TransportMode | null;
+  alternatives: LegAlternative[];
+  // Whether this leg's mode was set by an explicit player override.
+  overridden: boolean;
+  // The router recommends against the player's preferred mode by a material
+  // margin — the UI expands the alternatives by default.
+  contested: boolean;
 }
 
 export interface ScheduleDetail {
@@ -481,7 +595,7 @@ export interface ScheduleDetail {
 export async function getScheduleDetail(
   playerId: string,
   id: string,
-  player: Pick<Player, "ranking" | "rankingTour"> | null,
+  player: Pick<Player, "ranking" | "rankingTour" | "transportModes"> | null,
 ): Promise<ScheduleDetail | null> {
   const schedule = await prisma.schedule.findFirst({
     where: { id, playerId },
@@ -500,41 +614,72 @@ export async function getScheduleDetail(
   const { path, conflicts } = resolvePlayedPath(tournaments);
   const conflictIds = new Set(conflicts.map((t) => t.id));
 
-  const events: ScheduleEventView[] = [...tournaments].sort(byStartDate).map((t) => ({
-    tournamentId: t.id,
-    name: t.name,
-    tour: t.tour,
-    tier: t.tier,
-    surface: t.surface,
-    city: t.city,
-    country: t.country,
-    startDate: t.startDate,
-    endDate: t.endDate,
-    winnerPoints: roundValue(t.category?.pointsByRound, "W"),
-    winnerPrize: roundValue(t.category?.prizeMoneyByRound, "W"),
-    currency: t.category?.currency ?? null,
-    cutoff: buildCutoffAndGap(t.tour, t.cutoff, pointsAt, player),
-    conflict: conflictIds.has(t.id),
-  }));
+  const events: ScheduleEventView[] = [...tournaments].sort(byStartDate).map((t) => {
+    const cutoff = buildCutoffAndGap(t.tour, t.cutoff, pointsAt, player);
+    const qt = { tour: t.tour, startDate: t.startDate, qualiStartDate: t.qualiStartDate };
+    // Quali entry is a direct rank-vs-cutoff check: Challenger/ITF acceptance is
+    // always "unknown" (no points model), so we compare the player's ranking to
+    // the event's live cutoff rank (same circuit scale).
+    const rank = player?.ranking ?? null;
+    const cutoffRank = t.cutoff?.liveCutoffRank ?? null;
+    return {
+      tournamentId: t.id,
+      name: t.name,
+      tour: t.tour,
+      tier: t.tier,
+      surface: t.surface,
+      city: t.city,
+      country: t.country,
+      startDate: t.startDate,
+      endDate: t.endDate,
+      winnerPoints: roundValue(t.category?.pointsByRound, "W"),
+      winnerPrize: roundValue(t.category?.prizeMoneyByRound, "W"),
+      currency: t.category?.currency ?? null,
+      cutoff,
+      conflict: conflictIds.has(t.id),
+      // Quali entrants (Challenger/ITF, below the cut) arrive for the weekend
+      // qualifying, earlier than main-draw Monday (player-feedback P1-6).
+      arrivalDate: arrivalDate(qt, rank, cutoffRank),
+      qualiArrival: isQualiArrival(qt, rank, cutoffRank),
+    };
+  });
 
-  const built = buildLegsAndScores(tournaments);
-  // built.legs[i] departs after path[i] (both derive from the same played path).
-  const legs: TravelLegView[] = built.legs.map((l, i) => ({
-    fromLabel: l.fromLabel,
-    toLabel: l.toLabel,
-    durationMinutes: l.durationMinutes,
-    costEstimate: l.costEstimate,
-    afterTournamentId: path[i].id,
-  }));
+  const built = buildLegsAndScores(tournaments, routeOptionsFor(schedule, player?.transportModes ?? []));
+  // built.legs[i] departs after path[i] to path[i + 1] (both derive from the
+  // same played path), so routings[i] and the tournament pair align by index.
+  // activeOverrides is the pruned set that actually applied (stale/infeasible
+  // picks drop out), so it's the truth for the "your pick" flag.
+  const legs: TravelLegView[] = built.legs.map((l, i) => {
+    const routing = built.routings[i];
+    const toId = path[i + 1].id;
+    return {
+      fromLabel: l.fromLabel,
+      toLabel: l.toLabel,
+      durationMinutes: l.durationMinutes,
+      costEstimate: l.costEstimate,
+      afterTournamentId: path[i].id,
+      toTournamentId: toId,
+      mode: routing?.recommended.mode ?? null,
+      alternatives: routing?.alternatives ?? [],
+      overridden: legKey(path[i].id, toId) in built.activeOverrides,
+      contested: routing?.contested ?? false,
+    };
+  });
 
   const { expectedPoints, expectedPrize } = expectedScheduleTotals(tournaments, player);
   const netEarnings = expectedPrize - built.scoreTravelCost - schedule.tripCosts;
   const range = eventsDateRange(tournaments);
+  // The trip begins at the earliest arrival — a quali entrant's first event
+  // pulls the window a couple days before main-draw Monday (player-feedback P1-6).
+  const earliestArrival = events.reduce<Date | null>(
+    (min, e) => (min == null || e.arrivalDate < min ? e.arrivalDate : min),
+    null,
+  );
 
   return {
     id: schedule.id,
     name: schedule.name,
-    startDate: schedule.startDate ?? range.start,
+    startDate: schedule.startDate ?? earliestArrival ?? range.start,
     endDate: schedule.endDate ?? range.end,
     budgetCap: schedule.budgetCap,
     maxEvents: schedule.maxEvents,
@@ -553,14 +698,22 @@ export async function getScheduleDetail(
   };
 }
 
-// Rebuilds the travel legs + cached scores from the schedule's current events.
+// Rebuilds the travel legs + cached scores from the schedule's current events,
+// routing legs with the player's prefs/priority/overrides and pruning overrides
+// that no longer match a leg.
 export async function recomputeScheduleTotals(scheduleId: string): Promise<void> {
-  const items = await prisma.scheduleItem.findMany({
-    where: { scheduleId },
-    include: { tournament: { include: { category: true } } },
+  const schedule = await prisma.schedule.findUnique({
+    where: { id: scheduleId },
+    select: {
+      weightPoints: true,
+      legModeOverrides: true,
+      player: { select: { transportModes: true } },
+      items: { include: { tournament: { include: { category: true } } } },
+    },
   });
-  const events = items.map((i) => i.tournament).sort(byStartDate);
-  const built = buildLegsAndScores(events);
+  if (!schedule) return;
+  const events = schedule.items.map((i) => i.tournament).sort(byStartDate);
+  const built = buildLegsAndScores(events, routeOptionsFor(schedule, schedule.player.transportModes));
 
   await prisma.$transaction([
     prisma.travelLeg.deleteMany({ where: { scheduleId } }),
@@ -571,10 +724,61 @@ export async function recomputeScheduleTotals(scheduleId: string): Promise<void>
         scorePrizeMoney: built.scorePrizeMoney,
         scoreTravelTimeMin: built.scoreTravelTimeMin,
         scoreTravelCost: built.scoreTravelCost,
+        legModeOverrides: overridesForStorage(built.activeOverrides),
         travelLegs: { create: built.legs },
       },
     }),
   ]);
+}
+
+// Override (or clear) the transport mode for one leg, then recompute totals so
+// the schedule's travel time/cost + net earnings reflect the pick (P1-7a). A
+// null mode reverts the leg to the router's recommendation. Returns false if the
+// schedule isn't owned, the leg pair isn't a real leg, or the mode is infeasible.
+export async function setScheduleLegMode(
+  playerId: string,
+  scheduleId: string,
+  fromTournamentId: string,
+  toTournamentId: string,
+  mode: TransportMode | null,
+): Promise<boolean> {
+  const schedule = await prisma.schedule.findFirst({
+    where: { id: scheduleId, playerId },
+    select: {
+      legModeOverrides: true,
+      items: { include: { tournament: { select: { id: true, lat: true, long: true, startDate: true, endDate: true } } } },
+    },
+  });
+  if (!schedule) return false;
+
+  // The leg must be a real consecutive pair on the played path with coordinates.
+  const { path } = resolvePlayedPath(schedule.items.map((i) => i.tournament));
+  const idx = path.findIndex((t) => t.id === fromTournamentId);
+  const from = path[idx];
+  const to = path[idx + 1];
+  if (!from || !to || to.id !== toTournamentId) return false;
+  if (from.lat == null || from.long == null || to.lat == null || to.long == null) return false;
+
+  if (mode != null) {
+    const distanceKm = haversineKm(
+      { lat: from.lat, long: from.long },
+      { lat: to.lat, long: to.long },
+    );
+    if (!modeFeasible(distanceKm, mode)) return false;
+  }
+
+  const overrides = parseLegModeOverrides(schedule.legModeOverrides);
+  const key = legKey(fromTournamentId, toTournamentId);
+  if (mode == null) delete overrides[key];
+  else overrides[key] = mode;
+
+  // Persist the pick, then recompute so travel totals + net earnings update.
+  await prisma.schedule.update({
+    where: { id: scheduleId },
+    data: { legModeOverrides: overridesForStorage(overrides) },
+  });
+  await recomputeScheduleTotals(scheduleId);
+  return true;
 }
 
 // Edit operations — all scoped to the owning player (return false if not owned).

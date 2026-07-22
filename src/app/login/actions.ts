@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentSession, resolveLandingPath } from "@/lib/player";
 
 // Result surfaced back to the login page. On success the action redirects and
 // never returns a value.
@@ -24,7 +25,8 @@ export async function login(formData: FormData): Promise<AuthResult | void> {
 
   // Clear cached, user-specific content across the auth-state change.
   revalidatePath("/", "layout");
-  redirect("/schedules");
+  const session = await getCurrentSession();
+  redirect(session ? await resolveLandingPath(session.player) : "/schedules");
 }
 
 export async function signup(formData: FormData): Promise<AuthResult | void> {
@@ -55,7 +57,8 @@ export async function signup(formData: FormData): Promise<AuthResult | void> {
   }
 
   revalidatePath("/", "layout");
-  redirect("/schedules");
+  const session = await getCurrentSession();
+  redirect(session ? await resolveLandingPath(session.player) : "/schedules");
 }
 
 export async function logout(): Promise<void> {

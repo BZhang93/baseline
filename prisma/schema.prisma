@@ -126,6 +126,10 @@ model Tournament {
   surface     Surface
   startDate   DateTime
   endDate     DateTime
+  // Qualifying sign-in date (player-feedback P1-6). Challenger/ITF quali is the
+  // weekend before the main draw, so quali entrants arrive earlier. Null until
+  // the scraper populates it; the itinerary falls back to a startDate−2d heuristic.
+  qualiStartDate DateTime?
   drawSize    Int
   entryDeadline DateTime?
 
@@ -270,6 +274,11 @@ model Schedule {
   scorePrizeMoney    Int?
   scoreTravelTimeMin Int?
   scoreTravelCost    Int?
+
+  // Per-leg transport-mode overrides (player-feedback P1-7a), keyed by the
+  // "fromTournamentId>toTournamentId" pair so they survive event edits. A leg
+  // with no entry uses the router's recommended mode.
+  legModeOverrides Json?
 
   items      ScheduleItem[]
   travelLegs TravelLeg[]

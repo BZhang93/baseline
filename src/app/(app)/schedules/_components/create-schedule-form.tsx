@@ -19,7 +19,8 @@ import {
   formatMoney,
   formatTransportMode,
 } from "@/lib/format";
-import { haversineKm, estimateTravel } from "@/lib/travel";
+import { haversineKm } from "@/lib/travel";
+import { routeLeg, transportPriorityFromWeightPoints, type LegRouting } from "@/lib/transport";
 import { resolvePlayedPath, conflictsWith } from "@/lib/schedule-path";
 import { transportSearchUrl, lodgingSearchUrl } from "@/lib/booking-links";
 import {
@@ -75,16 +76,25 @@ export interface ScheduleFormInitial {
   priority?: number;
 }
 
+const TRANSPORT_ICON: Record<TransportMode, string> = {
+  FLIGHT: "✈",
+  TRAIN: "🚆",
+  BUS: "🚌",
+  CAR: "🚗",
+  RIDESHARE: "🚕",
+};
+
 export function CreateScheduleForm({
   candidates,
   initialSelectedIds = [],
-  preferredTransport = null,
+  transportModes = [],
   scheduleId,
   initial,
 }: {
   candidates: PickerCandidate[];
   initialSelectedIds?: string[];
-  preferredTransport?: TransportMode | null;
+  // Player's ranked transport preferences — drive the per-leg mode router.
+  transportModes?: TransportMode[];
   // When set, the form edits this schedule (saves back) instead of creating.
   scheduleId?: string;
   initial?: ScheduleFormInitial;
@@ -117,37 +127,50 @@ export function CreateScheduleForm({
   const conflictIds = useMemo(() => new Set(conflicts.map((t) => t.id)), [conflicts]);
   const totals = useMemo(() => scheduleTotals(path), [path]);
 
-  // Estimated travel legs between consecutive events on the played path (for the
-  // trip view + booking links). Mirrors the optimizer's leg estimate.
+  // The Priority slider steers mode choice the same way it sets the saved
+  // schedule's weights, so the preview matches what the server will route.
+  const routePriority = useMemo(
+    () => transportPriorityFromWeightPoints(optimizerWeights(priority).points),
+    [priority],
+  );
+
+  // Multi-modal per-leg routing over the played path (player-feedback P1-7): a
+  // recommended mode + alternatives per hop, mirroring buildLegsAndScores.
   const legs = useMemo(() => {
-    const out: {
-      from: PickerCandidate;
-      to: PickerCandidate;
-      minutes: number | null;
-      cost: number | null;
-    }[] = [];
+    const out: { from: PickerCandidate; to: PickerCandidate; routing: LegRouting | null }[] = [];
     for (let i = 1; i < path.length; i++) {
       const from = path[i - 1];
       const to = path[i];
       const hasCoords =
         from.lat != null && from.long != null && to.lat != null && to.long != null;
-      const est = hasCoords
-        ? estimateTravel(
+      const routing = hasCoords
+        ? routeLeg(
             haversineKm(
               { lat: from.lat!, long: from.long! },
               { lat: to.lat!, long: to.long! },
             ),
+            transportModes,
+            routePriority,
           )
         : null;
-      out.push({
-        from,
-        to,
-        minutes: est?.durationMinutes ?? null,
-        cost: est?.costEstimate ?? null,
-      });
+      out.push({ from, to, routing });
     }
     return out;
-  }, [path]);
+  }, [path, transportModes, routePriority]);
+
+  // Travel time/cost from the routed modes (not flight-only), so the live
+  // summary matches the saved schedule's totals.
+  const routedTravel = useMemo(() => {
+    let minutes = 0;
+    let cost = 0;
+    for (const l of legs) {
+      if (l.routing) {
+        minutes += l.routing.recommended.durationMinutes;
+        cost += l.routing.recommended.costEstimate;
+      }
+    }
+    return { minutes, cost };
+  }, [legs]);
 
   const [filters, setFilters] = useState<PickerFilters>(EMPTY_PICKER_FILTERS);
 
@@ -343,23 +366,23 @@ export function CreateScheduleForm({
           </div>
           <div>
             <div className="text-xs text-gray-500">Travel time</div>
-            <div className="font-medium">{formatTravelTime(totals.travelTimeMin)}</div>
+            <div className="font-medium">{formatTravelTime(routedTravel.minutes)}</div>
           </div>
           <div>
             <div className="text-xs text-gray-500">Travel cost</div>
-            <div className="font-medium">{formatMoney(totals.travelCost)}</div>
+            <div className="font-medium">{formatMoney(routedTravel.cost)}</div>
           </div>
           <div>
             <div className="text-xs text-gray-500">Net after costs</div>
             <div
               className={`font-medium ${
-                totals.expectedPrize - totals.travelCost - (numberOrUndefined(tripCosts) ?? 0) < 0
+                totals.expectedPrize - routedTravel.cost - (numberOrUndefined(tripCosts) ?? 0) < 0
                   ? "text-red-600"
                   : "text-green-700"
               }`}
             >
               {formatMoney(
-                totals.expectedPrize - totals.travelCost - (numberOrUndefined(tripCosts) ?? 0),
+                totals.expectedPrize - routedTravel.cost - (numberOrUndefined(tripCosts) ?? 0),
               )}
             </div>
           </div>
@@ -455,37 +478,51 @@ export function CreateScheduleForm({
         )}
 
         {legs.length > 0 && (
-          <div className="mt-4">
-            <h3 className="text-xs font-medium text-gray-500">
-              Getting around{" "}
-              {preferredTransport ? `· ${formatTransportMode(preferredTransport)}` : ""}
-            </h3>
-            <ul className="mt-1 flex flex-col gap-1 text-xs text-gray-600">
-              {legs.map((leg) => (
-                <li key={`${leg.from.id}-${leg.to.id}`} className="flex items-center gap-2">
-                  <span className="flex-1">
-                    {leg.from.city} → {leg.to.city}
-                    {leg.minutes != null && (
-                      <span className="text-gray-400">
-                        {" "}
-                        · {formatTravelTime(leg.minutes)} · ~{formatMoney(leg.cost)}
+          <div className="mt-4 rounded-lg border border-gray-200 p-3">
+            <h3 className="text-sm font-medium text-gray-700">Getting around</h3>
+            <p className="text-xs text-gray-400">
+              Recommended mode per hop — picked by your Priority &amp; transport prefs. You can
+              change any leg after saving.
+            </p>
+            <ul className="mt-2 flex flex-col gap-2 text-xs">
+              {legs.map((leg) => {
+                const rec = leg.routing?.recommended ?? null;
+                const mode = rec?.mode ?? null;
+                return (
+                  <li key={`${leg.from.id}-${leg.to.id}`} className="flex flex-col gap-0.5">
+                    <div className="flex items-center gap-2">
+                      <span aria-hidden>{mode ? TRANSPORT_ICON[mode] : "✈"}</span>
+                      <span className="flex-1 text-gray-700">
+                        {leg.from.city} → {leg.to.city}
+                        {rec && (
+                          <span className="text-gray-400">
+                            {" "}
+                            · {mode ? formatTransportMode(mode) : "Flight"} ·{" "}
+                            {formatTravelTime(rec.durationMinutes)} · ~{formatMoney(rec.costEstimate)}
+                          </span>
+                        )}
+                      </span>
+                      <a
+                        href={transportSearchUrl(
+                          `${leg.from.city}, ${leg.from.country}`,
+                          `${leg.to.city}, ${leg.to.country}`,
+                          mode,
+                        )}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline hover:text-gray-900"
+                      >
+                        Book ↗
+                      </a>
+                    </div>
+                    {leg.routing && leg.routing.alternatives.length > 0 && (
+                      <span className="pl-6 text-gray-400">
+                        or {leg.routing.alternatives[0].rationale}
                       </span>
                     )}
-                  </span>
-                  <a
-                    href={transportSearchUrl(
-                      `${leg.from.city}, ${leg.from.country}`,
-                      `${leg.to.city}, ${leg.to.country}`,
-                      preferredTransport,
-                    )}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline hover:text-gray-900"
-                  >
-                    Book ↗
-                  </a>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}

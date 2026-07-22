@@ -35,7 +35,7 @@ export default async function EditSchedulePage({
           candidates={candidates}
           initial={edit}
           initialSelectedIds={edit.eventIds}
-          preferredTransport={session.player.transportModes[0] ?? null}
+          transportModes={session.player.transportModes}
         />
       </div>
     </div>

@@ -26,10 +26,23 @@ export const getCurrentSession = cache(
 
     const player =
       (await prisma.player.findUnique({ where: { userId: user.id } })) ??
-      (await prisma.player.create({
-        data: { userId: user.id, name: user.email ?? null },
-      }));
+      // Name starts empty so onboarding requires the player's real name
+      // (email is prefilled separately from the auth identity).
+      (await prisma.player.create({ data: { userId: user.id } }));
 
     return { userId: user.id, email: user.email ?? null, player };
   },
 );
+
+// The three fields onboarding requires before the app is usable (BRA-101).
+export function isProfileComplete(player: Player): boolean {
+  return !!player.name?.trim() && player.circuit != null && player.ranking != null;
+}
+
+// Where to land a player after auth: onboarding until their profile is
+// complete, then Browse until they have a schedule, then My Schedules.
+export async function resolveLandingPath(player: Player): Promise<string> {
+  if (!isProfileComplete(player)) return "/profile";
+  const scheduleCount = await prisma.schedule.count({ where: { playerId: player.id } });
+  return scheduleCount > 0 ? "/schedules" : "/browse";
+}
