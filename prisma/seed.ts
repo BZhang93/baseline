@@ -57,11 +57,12 @@ async function main() {
     },
   });
 
-  // 3. Sample schedule ("European clay swing") with two WTA clay events.
+  // 3. Sample schedule ("European clay swing") — two WTA 125 clay events Maya is
+  // within the cutoff for (Båstad Jul 6 → Palermo Jul 20), a week apart.
   const clayEvents = await prisma.tournament.findMany({
     where: {
       edition: SEASON,
-      name: { in: ["Palermo Ladies Open", "Livesport Prague Open"] },
+      name: { in: ["Swedish Open (WTA)", "Palermo Ladies Open"] },
     },
     orderBy: { startDate: "asc" },
   });
@@ -73,7 +74,7 @@ async function main() {
       id: DEMO_SCHEDULE_ID,
       playerId: player.id,
       name: "European clay swing",
-      startDate: new Date("2026-07-13"),
+      startDate: new Date("2026-07-06"),
       endDate: new Date("2026-07-26"),
       budgetCap: 6000,
       maxEvents: 2,
@@ -85,14 +86,29 @@ async function main() {
     },
   });
 
-  // Idempotent items + travel legs for the demo schedule.
-  for (let i = 0; i < clayEvents.length; i++) {
-    const t = clayEvents[i];
-    await prisma.scheduleItem.upsert({
-      where: { scheduleId_tournamentId: { scheduleId: DEMO_SCHEDULE_ID, tournamentId: t.id } },
-      update: { order: i },
-      create: { scheduleId: DEMO_SCHEDULE_ID, tournamentId: t.id, order: i },
+  // Guard: only touch the demo's items when both expected events resolved, so a
+  // future rename can't silently wipe the demo (notIn [] would match everything).
+  if (clayEvents.length !== 2) {
+    console.warn(
+      `Demo schedule: expected 2 curated events, found ${clayEvents.length} — leaving items unchanged.`,
+    );
+  } else {
+    // Reset the demo schedule's items to exactly the intended set — otherwise a
+    // prior seed run's events linger when the curated demo changes.
+    await prisma.scheduleItem.deleteMany({
+      where: {
+        scheduleId: DEMO_SCHEDULE_ID,
+        tournamentId: { notIn: clayEvents.map((t) => t.id) },
+      },
     });
+    for (let i = 0; i < clayEvents.length; i++) {
+      const t = clayEvents[i];
+      await prisma.scheduleItem.upsert({
+        where: { scheduleId_tournamentId: { scheduleId: DEMO_SCHEDULE_ID, tournamentId: t.id } },
+        update: { order: i },
+        create: { scheduleId: DEMO_SCHEDULE_ID, tournamentId: t.id, order: i },
+      });
+    }
   }
 
   await prisma.travelLeg.deleteMany({ where: { scheduleId: DEMO_SCHEDULE_ID } });
@@ -101,11 +117,11 @@ async function main() {
       data: {
         scheduleId: DEMO_SCHEDULE_ID,
         order: 0,
-        fromLabel: "Palermo, Italy",
-        toLabel: "Prague, Czechia",
+        fromLabel: "Bastad, Sweden",
+        toLabel: "Palermo, Italy",
         mode: TravelMode.FLIGHT,
-        durationMinutes: 150,
-        costEstimate: 240,
+        durationMinutes: 273,
+        costEstimate: 306,
         date: new Date("2026-07-19"),
       },
     });
