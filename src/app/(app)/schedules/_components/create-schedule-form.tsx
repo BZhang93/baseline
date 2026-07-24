@@ -58,6 +58,10 @@ function numberOrUndefined(v: string): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+// New schedules default their window to the end of the current year, so it
+// covers the rest of the season out of the box (mirrors Browse).
+const DEFAULT_TO = `${new Date().getUTCFullYear()}-12-31`;
+
 const ACCEPTANCE: Record<AcceptanceStatus, { label: string; className: string } | null> = {
   in: { label: "In", className: "bg-green-100 text-green-700" },
   borderline: { label: "Borderline", className: "bg-amber-100 text-amber-700" },
@@ -101,7 +105,7 @@ export function CreateScheduleForm({
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [from, setFrom] = useState(initial?.from ?? "");
-  const [to, setTo] = useState(initial?.to ?? "");
+  const [to, setTo] = useState(initial?.to ?? DEFAULT_TO);
   const [budgetCap, setBudgetCap] = useState(initial?.budgetCap ?? "");
   const [maxEvents, setMaxEvents] = useState(initial?.maxEvents ?? "");
   const [minRestDays, setMinRestDays] = useState(initial?.minRestDays ?? "");
@@ -172,7 +176,18 @@ export function CreateScheduleForm({
     return { minutes, cost };
   }, [legs]);
 
-  const [filters, setFilters] = useState<PickerFilters>(EMPTY_PICKER_FILTERS);
+  // The picker's date range tracks the schedule window, so the events on the
+  // right end where the "To" date does.
+  const [filters, setFilters] = useState<PickerFilters>({
+    ...EMPTY_PICKER_FILTERS,
+    to: initial?.to ?? DEFAULT_TO,
+  });
+
+  // Keep the schedule "To" and the picker's "to" filter in sync.
+  function handleToChange(value: string) {
+    setTo(value);
+    setFilters((f) => ({ ...f, to: value }));
+  }
 
   const options = useMemo(() => pickerOptions(candidates), [candidates]);
   const available = useMemo(
@@ -273,7 +288,7 @@ export function CreateScheduleForm({
           </label>
           <label className={label}>
             To
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={field} />
+            <input type="date" value={to} onChange={(e) => handleToChange(e.target.value)} className={field} />
           </label>
         </div>
 
@@ -311,6 +326,11 @@ export function CreateScheduleForm({
           </label>
         </div>
 
+        <p className="-mt-2 text-xs text-gray-400">
+          <span className="font-medium text-gray-500">Budget Cap</span> is a ceiling —
+          &ldquo;Suggest&rdquo; won&apos;t propose a swing whose estimated travel cost exceeds it.
+        </p>
+
         <label className={label}>
           Trip Costs (lodging, food, etc.)
           <input
@@ -322,7 +342,8 @@ export function CreateScheduleForm({
             className={field}
           />
           <span className="text-xs text-gray-400">
-            Subtracted (with estimated travel) from expected prize for net earnings.
+            Your actual out-of-pocket (not a limit) — subtracted with estimated travel from
+            expected prize for net earnings.
           </span>
         </label>
 
@@ -345,14 +366,6 @@ export function CreateScheduleForm({
             <span>Maximize points</span>
           </div>
         </div>
-
-        <button
-          onClick={suggest}
-          className="w-fit rounded border border-black px-4 py-2 text-sm font-medium hover:bg-gray-50"
-        >
-          Suggest schedule
-        </button>
-        {suggestion && <p className="text-xs text-gray-500">{suggestion}</p>}
 
         {/* Live score summary for the current selection. */}
         <div className="grid grid-cols-2 gap-3 rounded border border-gray-200 p-3 text-sm sm:grid-cols-5">
@@ -415,7 +428,16 @@ export function CreateScheduleForm({
 
       {/* Right: event picker */}
       <div>
-        <h2 className="text-sm font-medium">Selected ({selected.length})</h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-medium">Selected ({selected.length})</h2>
+          <button
+            onClick={suggest}
+            className="rounded border border-black px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
+          >
+            Suggest schedule
+          </button>
+        </div>
+        {suggestion && <p className="mt-1 text-xs text-gray-500">{suggestion}</p>}
         {selected.length === 0 ? (
           <p className="mt-1 text-sm text-gray-500">
             Add events below, or hit <span className="font-medium">Suggest schedule</span>.
