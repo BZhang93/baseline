@@ -12,6 +12,7 @@ import {
 } from "@/lib/format";
 import { lodgingSearchUrl } from "@/lib/booking-links";
 import { GapBadge } from "../../_components/gap-badge";
+import { ChangeBadge } from "../../_components/change-badge";
 import { RenameName } from "../_components/rename-name";
 import { TripCosts } from "../_components/trip-costs";
 import { LegModeControl } from "../_components/leg-mode-control";
@@ -66,8 +67,9 @@ function EventRow({
         <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">
           {formatSurface(e.surface)}
         </span>
+        <ChangeBadge change={e.change} />
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">
+      <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
         <div>
           <div className="text-gray-500">Winner</div>
           <div>{e.winnerPoints != null ? `${e.winnerPoints} pts` : "—"}</div>
@@ -77,18 +79,12 @@ function EventRow({
           <div>{formatMoney(e.winnerPrize, e.currency ?? undefined)}</div>
         </div>
         <div>
-          <div className="text-gray-500">Live Cutoff</div>
-          <div>
-            {e.cutoff.liveCutoff.rank != null ? `#${e.cutoff.liveCutoff.rank}` : "—"}
-            {e.cutoff.liveCutoff.points != null ? ` · ${e.cutoff.liveCutoff.points} pts` : ""}
+          <div className="text-gray-500" title="Estimated — based on last year's field; no live entry lists yet">
+            Est. Cutoff
           </div>
-        </div>
-        <div>
-          <div className="text-gray-500">Last Year</div>
           <div>
-            {e.cutoff.historicalCutoff.rank != null
-              ? `#${e.cutoff.historicalCutoff.rank}`
-              : "—"}
+            {e.cutoff.liveCutoff.rank != null ? `~#${e.cutoff.liveCutoff.rank}` : "—"}
+            {e.cutoff.liveCutoff.points != null ? ` · ${e.cutoff.liveCutoff.points} pts` : ""}
           </div>
         </div>
       </div>
