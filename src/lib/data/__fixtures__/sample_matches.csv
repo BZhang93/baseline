@@ -1,0 +1,10 @@
+tourney_id,tourney_name,tourney_level,tourney_date,surface,draw_size,round,winner_name,winner_entry,winner_rank,loser_name,loser_entry,loser_rank
+2025-314,Swiss Open Gstaad,A,20250714,Clay,28,R32,Player A,,12,Player E,Q,205
+2025-314,Swiss Open Gstaad,A,20250714,Clay,28,R32,Player B,,55,Player F,WC,290
+2025-314,Swiss Open Gstaad,A,20250714,Clay,28,R16,Player A,,12,Player C,,101
+2025-319,Plava Laguna Croatia Open Umag,A,20250714,Clay,28,R32,Player G,,34,Player H,,113
+2025-319,Plava Laguna Croatia Open Umag,A,20250714,Clay,28,R32,Player I,LL,190,Player J,,88
+2025-410,Generali Open Kitzbuhel,A,20250721,Clay,28,R32,Player K,,41,Player L,,108
+2025-410,Generali Open Kitzbuhel,A,20250721,Clay,28,R32,Player M,WC,260,Player N,,97
+2025-780,Hamburg Ladies Open,P,20250721,Clay,32,R32,Player O,,44,Player P,,96
+2025-780,Hamburg Ladies Open,P,20250721,Clay,32,R32,Player Q,Q,215,Player R,,72
