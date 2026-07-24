@@ -6,6 +6,7 @@ import type { TournamentView } from "@/lib/tournaments";
 import { formatDateRange, formatMoney, formatSurface, formatTour } from "@/lib/format";
 import { lodgingSearchUrl } from "@/lib/booking-links";
 import { GapBadge } from "../../_components/gap-badge";
+import { ChangeBadge } from "../../_components/change-badge";
 
 function EventCard({
   t,
@@ -40,9 +41,10 @@ function EventCard({
           {formatSurface(t.surface)}
         </span>
         <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">Draw {t.drawSize}</span>
+        <ChangeBadge change={t.change} />
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">
+      <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
         <div>
           <div className="text-gray-500">Winner</div>
           <div>{t.winnerPoints != null ? `${t.winnerPoints} pts` : "—"}</div>
@@ -52,15 +54,13 @@ function EventCard({
           <div>{formatMoney(t.winnerPrize, t.currency ?? undefined)}</div>
         </div>
         <div>
-          <div className="text-gray-500">Live Cutoff</div>
+          <div className="text-gray-500" title="Estimated — based on last year's field; no live entry lists yet">
+            Est. Cutoff
+          </div>
           <div>
-            {t.liveCutoff.rank != null ? `#${t.liveCutoff.rank}` : "—"}
+            {t.liveCutoff.rank != null ? `~#${t.liveCutoff.rank}` : "—"}
             {t.liveCutoff.points != null ? ` · ${t.liveCutoff.points} pts` : ""}
           </div>
-        </div>
-        <div>
-          <div className="text-gray-500">Last Year</div>
-          <div>{t.historicalCutoff.rank != null ? `#${t.historicalCutoff.rank}` : "—"}</div>
         </div>
       </div>
 

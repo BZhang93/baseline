@@ -4,11 +4,13 @@ import type { Tour, Surface, Player } from "@/generated/prisma/client";
 import {
   loadRankingLookup,
   buildCutoffAndGap,
+  getCutoffEstimates,
   rankingTourFor,
   computeGap,
   type CutoffAndGap,
   type AcceptanceStatus,
 } from "@/lib/tournaments";
+import type { CutoffBasis, EventChange } from "@/lib/cutoff-estimate";
 import { roundValue } from "@/lib/round-values";
 import { resolvePlayedPath, eventsDateRange } from "@/lib/schedule-path";
 import { eventExpectedValue, type CandidateEvent } from "@/lib/optimizer";
@@ -537,6 +539,10 @@ export interface ScheduleEventView {
   winnerPrize: number | null;
   currency: string | null;
   cutoff: CutoffAndGap;
+  // How the (estimated) live cutoff was derived + a new/changed-event flag,
+  // so the UI can show confidence (BRA-107/108).
+  cutoffBasis: CutoffBasis;
+  change: EventChange | null;
   // True when this event collides with an earlier same-week event, so it's
   // excluded from totals and the travel path (player-feedback P0-1).
   conflict: boolean;
@@ -595,7 +601,7 @@ export interface ScheduleDetail {
 export async function getScheduleDetail(
   playerId: string,
   id: string,
-  player: Pick<Player, "ranking" | "rankingTour" | "transportModes"> | null,
+  player: Pick<Player, "ranking" | "rankingTour" | "transportModes" | "circuit"> | null,
 ): Promise<ScheduleDetail | null> {
   const schedule = await prisma.schedule.findFirst({
     where: { id, playerId },
@@ -605,7 +611,10 @@ export async function getScheduleDetail(
   });
   if (!schedule) return null;
 
-  const pointsAt = await loadRankingLookup();
+  const [pointsAt, estimates] = await Promise.all([
+    loadRankingLookup(),
+    getCutoffEstimates(player?.circuit ?? null),
+  ]);
   const tournaments = schedule.items.map((i) => i.tournament);
 
   // Resolve the played path so we can flag same-week conflicts and recompute
@@ -615,13 +624,20 @@ export async function getScheduleDetail(
   const conflictIds = new Set(conflicts.map((t) => t.id));
 
   const events: ScheduleEventView[] = [...tournaments].sort(byStartDate).map((t) => {
-    const cutoff = buildCutoffAndGap(t.tour, t.cutoff, pointsAt, player);
+    const est = estimates.get(t.id);
+    const estRank = est?.rank ?? null;
+    const cutoff = buildCutoffAndGap(
+      t.tour,
+      { liveCutoffRank: estRank, historicalCutoffRank: t.cutoff?.historicalCutoffRank ?? null },
+      pointsAt,
+      player,
+    );
     const qt = { tour: t.tour, startDate: t.startDate, qualiStartDate: t.qualiStartDate };
     // Quali entry is a direct rank-vs-cutoff check: Challenger/ITF acceptance is
     // always "unknown" (no points model), so we compare the player's ranking to
-    // the event's live cutoff rank (same circuit scale).
+    // the event's (estimated) live cutoff rank (same circuit scale).
     const rank = player?.ranking ?? null;
-    const cutoffRank = t.cutoff?.liveCutoffRank ?? null;
+    const cutoffRank = estRank;
     return {
       tournamentId: t.id,
       name: t.name,
@@ -636,6 +652,8 @@ export async function getScheduleDetail(
       winnerPrize: roundValue(t.category?.prizeMoneyByRound, "W"),
       currency: t.category?.currency ?? null,
       cutoff,
+      cutoffBasis: est?.basis ?? "estimated",
+      change: est?.change ?? null,
       conflict: conflictIds.has(t.id),
       // Quali entrants (Challenger/ITF, below the cut) arrive for the weekend
       // qualifying, earlier than main-draw Monday (player-feedback P1-6).
