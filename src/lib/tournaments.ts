@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { Tour, Surface, Prisma, Circuit, type Player } from "@/generated/prisma/client";
 import { roundValue } from "@/lib/round-values";
+import { haversineKm, estimateTravel } from "@/lib/travel";
 import {
   estimateCutoffs,
   type CutoffBasis,
@@ -215,6 +216,70 @@ export async function getCutoffEstimates(
       historicalRank: r.cutoff?.historicalCutoffRank ?? null,
     })),
   );
+}
+
+export interface CompareTournament extends TournamentView {
+  // Estimated travel from the player's home base to the event, if both are known.
+  travelFromHome: { minutes: number; cost: number } | null;
+}
+
+// Side-by-side comparison data for a set of events (BRA-64). Circuit-scoped,
+// preserves the requested order, and adds travel from the player's home base.
+export async function getCompareData(
+  ids: string[],
+  player:
+    | Pick<Player, "ranking" | "rankingTour" | "circuit" | "homeBaseLat" | "homeBaseLong">
+    | null,
+): Promise<CompareTournament[]> {
+  if (ids.length === 0) return [];
+  const [tournaments, pointsAt, estimates] = await Promise.all([
+    prisma.tournament.findMany({
+      where: { id: { in: ids }, ...(player?.circuit ? { circuit: player.circuit } : {}) },
+      include: { category: true, cutoff: true },
+    }),
+    loadRankingLookup(),
+    getCutoffEstimates(player?.circuit ?? null),
+  ]);
+  const home =
+    player?.homeBaseLat != null && player?.homeBaseLong != null
+      ? { lat: player.homeBaseLat, long: player.homeBaseLong }
+      : null;
+
+  const byId = new Map(tournaments.map((t) => [t.id, t]));
+  return ids
+    .map((id) => byId.get(id))
+    .filter((t): t is NonNullable<typeof t> => t != null)
+    .map((t) => {
+      const est = estimates.get(t.id);
+      const travel =
+        home && t.lat != null && t.long != null
+          ? estimateTravel(haversineKm(home, { lat: t.lat, long: t.long }))
+          : null;
+      return {
+        id: t.id,
+        name: t.name,
+        tour: t.tour,
+        tier: t.tier,
+        city: t.city,
+        country: t.country,
+        surface: t.surface,
+        startDate: t.startDate,
+        endDate: t.endDate,
+        drawSize: t.drawSize,
+        winnerPoints: roundValue(t.category?.pointsByRound, "W"),
+        winnerPrize: roundValue(t.category?.prizeMoneyByRound, "W"),
+        currency: t.category?.currency ?? null,
+        ...buildCutoffAndGap(
+          t.tour,
+          { liveCutoffRank: est?.rank ?? null, historicalCutoffRank: t.cutoff?.historicalCutoffRank ?? null },
+          pointsAt,
+          player,
+        ),
+        cutoffBasis: est?.basis ?? "estimated",
+        change: est?.change ?? null,
+        travelFromHome: travel ? { minutes: travel.durationMinutes, cost: travel.costEstimate } : null,
+      };
+    });
 }
 
 // ---------------------------------------------------------------------------
