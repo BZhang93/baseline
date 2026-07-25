@@ -7,7 +7,7 @@ import { NAV_ITEMS, isNavActive } from "@/lib/nav";
 export function AppNav() {
   const pathname = usePathname();
   return (
-    <nav className="flex items-center gap-1">
+    <nav className="hidden items-center gap-1 sm:flex">
       {NAV_ITEMS.map((item) => {
         const active = isNavActive(pathname, item.href);
         return (

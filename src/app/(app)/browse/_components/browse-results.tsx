@@ -164,7 +164,7 @@ export function BrowseResults({ tournaments }: { tournaments: TournamentView[] }
       )}
 
       {selected.size > 0 && (
-        <div className="sticky bottom-0 -mx-4 flex flex-wrap items-center gap-3 border-t border-gray-200 bg-white px-4 py-3">
+        <div className="sticky bottom-12 -mx-4 flex flex-wrap items-center gap-3 border-t border-gray-200 bg-white px-4 py-3 sm:bottom-0">
           <span className="text-sm">{selected.size} selected</span>
           <button
             onClick={() => setSelected(new Set())}
