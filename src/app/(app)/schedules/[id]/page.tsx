@@ -29,7 +29,7 @@ function EventRow({
   e: ScheduleEventView;
 }) {
   return (
-    <div className={`rounded-lg border p-4 ${e.conflict ? "border-red-200 bg-red-50" : "border-gray-200"}`}>
+    <div className={`rounded-lg border p-4 ${e.conflict || e.circuitMismatch ? "border-red-200 bg-red-50" : "border-gray-200"}`}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="font-medium">{e.name}</h3>
@@ -44,6 +44,11 @@ function EventRow({
           {e.conflict && (
             <p className="mt-1 text-xs font-medium text-red-700">
               Same-week conflict — not counted in totals
+            </p>
+          )}
+          {e.circuitMismatch && (
+            <p className="mt-1 text-xs font-medium text-red-700">
+              Not in your circuit — this event shouldn&apos;t be here; remove it.
             </p>
           )}
         </div>
@@ -156,6 +161,14 @@ export default async function ScheduleDetailPage({
           {schedule.conflictCount} event{schedule.conflictCount > 1 ? "s" : ""} overlap the same week
           as another — a player can only play one at a time, so they&apos;re flagged below and
           excluded from the totals. Remove them to resolve.
+        </p>
+      )}
+
+      {schedule.circuitMismatchCount > 0 && (
+        <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {schedule.circuitMismatchCount} event{schedule.circuitMismatchCount > 1 ? "s" : ""} aren&apos;t
+          in your circuit (from before circuit scoping) — flagged below and excluded from the totals.
+          Remove them to clean up this schedule.
         </p>
       )}
 
