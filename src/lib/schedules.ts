@@ -27,6 +27,7 @@ import {
 } from "@/lib/transport";
 import type { TransportMode } from "@/generated/prisma/enums";
 import { arrivalDate, isQualiArrival } from "@/lib/quali";
+import { departureWindow, type DepartureWindow } from "@/lib/departure";
 
 // A player's applicable rank/cutoff for one event, as the optimizer's
 // round-reached model expects. Shared by the Browse candidate loader and the
@@ -570,6 +571,9 @@ export interface ScheduleEventView {
   arrivalDate: Date;
   // True when arrivalDate is a qualifying arrival (before main-draw start).
   qualiArrival: boolean;
+  // Draw-dependent departure window: earliest (first-round loss) → latest (win
+  // the final), so a player doesn't book a flight they can't use (P1-5).
+  departure: DepartureWindow;
 }
 
 export interface TravelLegView {
@@ -686,6 +690,7 @@ export async function getScheduleDetail(
       // qualifying, earlier than main-draw Monday (player-feedback P1-6).
       arrivalDate: arrivalDate(qt, rank, cutoffRank),
       qualiArrival: isQualiArrival(qt, rank, cutoffRank),
+      departure: departureWindow(t.startDate, t.endDate, t.drawSize),
     };
   });
 
