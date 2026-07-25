@@ -17,6 +17,8 @@ import { RenameName } from "../_components/rename-name";
 import { TripCosts } from "../_components/trip-costs";
 import { LegModeControl } from "../_components/leg-mode-control";
 import { AddEvents } from "../_components/add-events";
+import { SwapEvent } from "../_components/swap-event";
+import { eventsOverlap } from "@/lib/schedule-path";
 import { removeEventAction, deleteScheduleAction } from "../actions";
 
 const externalLink =
@@ -120,10 +122,11 @@ export default async function ScheduleDetailPage({
   const schedule = await getScheduleDetail(session.player.id, id, session.player);
   if (!schedule) notFound();
 
-  // Events the player can still add (BRA-94): in-circuit, within the schedule's
-  // window, and not already in the schedule.
+  // In-circuit candidate pool for adding (BRA-94) + per-week swapping (BRA-95).
+  const allCandidates = await getScheduleCandidates(session.player);
+  const byId = new Map(allCandidates.map((c) => [c.id, c]));
   const existingIds = new Set(schedule.events.map((e) => e.tournamentId));
-  const candidates = (await getScheduleCandidates(session.player)).filter(
+  const addable = allCandidates.filter(
     (c) =>
       !existingIds.has(c.id) &&
       (!schedule.startDate || c.endDate >= schedule.startDate) &&
@@ -230,9 +233,19 @@ export default async function ScheduleDetailPage({
         <ol className="mt-6 flex flex-col gap-4">
           {schedule.events.map((e) => {
             const leg = legByAfter.get(e.tournamentId);
+            const current = byId.get(e.tournamentId);
+            // This week's alternatives: same-week, in-circuit, not already added.
+            const alternatives = current
+              ? allCandidates.filter(
+                  (c) => c.id !== current.id && !existingIds.has(c.id) && eventsOverlap(c, current),
+                )
+              : [];
             return (
               <li key={e.tournamentId} className="flex flex-col gap-3">
                 <EventRow scheduleId={schedule.id} e={e} />
+                {current && (
+                  <SwapEvent scheduleId={schedule.id} current={current} alternatives={alternatives} />
+                )}
                 {leg && <LegModeControl scheduleId={schedule.id} leg={leg} />}
               </li>
             );
@@ -240,7 +253,7 @@ export default async function ScheduleDetailPage({
         </ol>
       )}
 
-      <AddEvents scheduleId={schedule.id} candidates={candidates} />
+      <AddEvents scheduleId={schedule.id} candidates={addable} />
     </div>
   );
 }
