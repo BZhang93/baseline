@@ -10,6 +10,7 @@ import {
   updateScheduleTripCosts,
   removeEventFromSchedule,
   addEventToSchedule,
+  swapScheduleEvent,
   setScheduleLegMode,
   deleteSchedule,
   type CreateScheduleInput,
@@ -84,6 +85,19 @@ export async function addEventAction(scheduleId: string, tournamentId: string): 
   const session = await getCurrentSession();
   if (!session) return;
   await addEventToSchedule(session.player.id, scheduleId, tournamentId);
+  revalidatePath(`/schedules/${scheduleId}`);
+  revalidatePath("/schedules");
+}
+
+// Swap a scheduled event for another in the same week (BRA-95).
+export async function swapEventAction(
+  scheduleId: string,
+  removeId: string,
+  addId: string,
+): Promise<void> {
+  const session = await getCurrentSession();
+  if (!session) return;
+  await swapScheduleEvent(session.player.id, scheduleId, removeId, addId);
   revalidatePath(`/schedules/${scheduleId}`);
   revalidatePath("/schedules");
 }

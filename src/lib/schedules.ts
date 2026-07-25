@@ -12,7 +12,7 @@ import {
 } from "@/lib/tournaments";
 import type { CutoffBasis, EventChange } from "@/lib/cutoff-estimate";
 import { roundValue } from "@/lib/round-values";
-import { resolvePlayedPath, eventsDateRange } from "@/lib/schedule-path";
+import { resolvePlayedPath, eventsDateRange, eventsOverlap } from "@/lib/schedule-path";
 import { eventExpectedValue, type CandidateEvent } from "@/lib/optimizer";
 import {
   routeLeg,
@@ -900,6 +900,47 @@ export async function addEventToSchedule(
   await prisma.scheduleItem.create({
     data: { scheduleId, tournamentId, order: owned.items.length },
   });
+  await recomputeScheduleTotals(scheduleId);
+  return true;
+}
+
+// Per-week swap (BRA-95): replace one scheduled event with another in the SAME
+// week (the one-per-week edit). Ownership + circuit checked; the replacement
+// must overlap the removed event's week and not already be in the schedule.
+export async function swapScheduleEvent(
+  playerId: string,
+  scheduleId: string,
+  removeId: string,
+  addId: string,
+): Promise<boolean> {
+  if (removeId === addId) return false;
+  const owned = await prisma.schedule.findFirst({
+    where: { id: scheduleId, playerId },
+    select: {
+      id: true,
+      player: { select: { circuit: true } },
+      items: { select: { tournamentId: true } },
+    },
+  });
+  if (!owned) return false;
+  if (!owned.items.some((i) => i.tournamentId === removeId)) return false; // not in schedule
+  if (owned.items.some((i) => i.tournamentId === addId)) return false; // target already in
+
+  const circuit = owned.player.circuit;
+  const [rem, add] = await Promise.all([
+    prisma.tournament.findUnique({ where: { id: removeId }, select: { startDate: true, endDate: true } }),
+    prisma.tournament.findFirst({
+      where: { id: addId, ...(circuit ? { circuit } : {}) },
+      select: { startDate: true, endDate: true },
+    }),
+  ]);
+  if (!rem || !add) return false;
+  if (!eventsOverlap(rem, add)) return false; // must be the same week
+
+  await prisma.$transaction([
+    prisma.scheduleItem.deleteMany({ where: { scheduleId, tournamentId: removeId } }),
+    prisma.scheduleItem.create({ data: { scheduleId, tournamentId: addId, order: owned.items.length } }),
+  ]);
   await recomputeScheduleTotals(scheduleId);
   return true;
 }
