@@ -119,9 +119,17 @@ export function BrowseResults({ tournaments }: { tournaments: TournamentView[] }
           >
             Clear
           </button>
+          {selected.size >= 2 && (
+            <Link
+              href={`/browse/compare?events=${selectedIds.join(",")}`}
+              className="ml-auto rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              Compare
+            </Link>
+          )}
           <Link
             href={`/schedules/new?events=${selectedIds.join(",")}`}
-            className="ml-auto rounded bg-black px-4 py-2 text-sm text-white"
+            className={`${selected.size >= 2 ? "" : "ml-auto"} rounded bg-black px-4 py-2 text-sm text-white`}
           >
             Create schedule from selection
           </Link>
