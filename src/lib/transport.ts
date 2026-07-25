@@ -177,13 +177,16 @@ export function routeLeg(
   return { distanceKm, recommended, alternatives, contested };
 }
 
-// Priority derives from the same slider that sets the schedule's weights, so
-// there's one source of truth. weightPoints ∈ [0.5, 2] maps to p ∈ [0, 1]:
-// protect-body (low) favors time, maximize-points (high) favors cost.
-export function transportPriorityFromWeightPoints(weightPoints: number): TransportPriority {
-  const p = (weightPoints - 0.5) / 1.5;
-  if (p <= 0.4) return "time";
-  if (p >= 0.6) return "cost";
+// Priority derives from the schedule's travel weights, so there's one source of
+// truth with the create form's rest/cost sliders. A heavier travel-TIME weight
+// (protect body) favors the fastest mode; a heavier travel-COST weight favors
+// the cheapest; equal weights are balanced.
+export function transportPriorityFromWeights(
+  weightTravelTime: number,
+  weightTravelCost: number,
+): TransportPriority {
+  if (weightTravelTime > weightTravelCost + 1e-9) return "time";
+  if (weightTravelCost > weightTravelTime + 1e-9) return "cost";
   return "balanced";
 }
 
