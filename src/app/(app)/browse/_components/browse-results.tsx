@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { TournamentView } from "@/lib/tournaments";
+import type { AcceptanceStatus } from "@/lib/tournaments";
 import { formatDate, formatDateRange, formatMoney, formatSurface, formatTour } from "@/lib/format";
 import { departureWindow } from "@/lib/departure";
 import { lodgingSearchUrl } from "@/lib/booking-links";
@@ -83,8 +84,25 @@ function EventCard({
   );
 }
 
+const STATUS_RANK: Record<AcceptanceStatus, number> = { in: 0, borderline: 1, unknown: 2, out: 3 };
+
 export function BrowseResults({ tournaments }: { tournaments: TournamentView[] }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [sortBy, setSortBy] = useState<"date" | "points" | "gap">("date");
+  const [hideOut, setHideOut] = useState(false);
+
+  // Sort/hide are client-side — every event is already loaded (BRA-90).
+  const displayed = useMemo(() => {
+    const list = hideOut ? tournaments.filter((t) => t.gap.status !== "out") : tournaments;
+    return [...list].sort((a, b) => {
+      if (sortBy === "points") return (b.winnerPoints ?? 0) - (a.winnerPoints ?? 0);
+      if (sortBy === "gap") {
+        const d = STATUS_RANK[a.gap.status] - STATUS_RANK[b.gap.status];
+        return d !== 0 ? d : (a.gap.spots ?? Infinity) - (b.gap.spots ?? Infinity);
+      }
+      return a.startDate.getTime() - b.startDate.getTime();
+    });
+  }, [tournaments, sortBy, hideOut]);
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -104,16 +122,46 @@ export function BrowseResults({ tournaments }: { tournaments: TournamentView[] }
 
   return (
     <>
-      <ul className="mt-4 grid gap-3 pb-20">
-        {tournaments.map((t) => (
-          <EventCard
-            key={t.id}
-            t={t}
-            selected={selected.has(t.id)}
-            onToggle={() => toggle(t.id)}
-          />
-        ))}
-      </ul>
+      <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
+        <label className="flex items-center gap-1 text-gray-600">
+          Sort
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+            className="rounded border border-gray-300 px-2 py-1"
+          >
+            <option value="date">Date</option>
+            <option value="points">Points</option>
+            <option value="gap">Reachability</option>
+          </select>
+        </label>
+        <label className="flex items-center gap-1 text-gray-600">
+          <input type="checkbox" checked={hideOut} onChange={(e) => setHideOut(e.target.checked)} />
+          Hide events past my cutoff
+        </label>
+        <span className="text-gray-400">{displayed.length} shown</span>
+      </div>
+
+      {displayed.length === 0 ? (
+        <p className="mt-8 text-gray-500">
+          Every event is past your cutoff.{" "}
+          <button onClick={() => setHideOut(false)} className="underline">
+            Show all
+          </button>
+          .
+        </p>
+      ) : (
+        <ul className="mt-4 grid gap-3 pb-20">
+          {displayed.map((t) => (
+            <EventCard
+              key={t.id}
+              t={t}
+              selected={selected.has(t.id)}
+              onToggle={() => toggle(t.id)}
+            />
+          ))}
+        </ul>
+      )}
 
       {selected.size > 0 && (
         <div className="sticky bottom-0 -mx-4 flex flex-wrap items-center gap-3 border-t border-gray-200 bg-white px-4 py-3">
