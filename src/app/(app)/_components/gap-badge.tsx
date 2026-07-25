@@ -20,7 +20,7 @@ export function GapBadge({ gap }: { gap: GapView }) {
           ? `${gap.spots} spots${gap.points != null ? ` · ${gap.points} pts` : ""} short`
           : "Cutoff N/A";
   return (
-    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${styles[gap.status]}`}>
+    <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${styles[gap.status]}`}>
       {label}
     </span>
   );
