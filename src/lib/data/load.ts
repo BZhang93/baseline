@@ -38,10 +38,16 @@ export async function loadIntoDatabase(
 
 // Writes already-fetched data to the live tables. Split from the fetch so the
 // validate→promote gate can check the data first without fetching twice.
+//
+// `prune` (default true) deletes events removed from the source (BRA-113). It
+// assumes `data` is the COMPLETE set for the editions it covers, so a partial
+// load (e.g. a single-tour ingest) MUST pass `prune: false` — otherwise it would
+// delete the editions' other events that just aren't in this partial source.
 export async function loadData(
   prisma: PrismaClient,
   data: LoadedData,
   sourceName: string,
+  { prune = true }: { prune?: boolean } = {},
 ): Promise<LoadResult> {
   const { categories, tournaments, rankings } = data;
 
@@ -127,6 +133,30 @@ export async function loadData(
         `${missingCategories.size} tier/season key(s); those events have no ` +
         `points/prize: ${[...missingCategories].join(", ")}`,
     );
+  }
+
+  // 2b. Prune tournaments removed from the source (BRA-113). For each edition the
+  // source covers, delete DB events of that edition no longer in the source — but
+  // only if no user schedule references them (ScheduleItem has no cascade, and we
+  // never want to silently drop an event out of someone's saved plan). Cutoff /
+  // accommodation / dining rows cascade with the tournament.
+  const editions = [...new Set(tournaments.map((t) => t.edition))];
+  if (prune && editions.length > 0) {
+    const sourceKeys = new Set(tournaments.map((t) => `${t.name}::${t.edition}`));
+    const existing = await prisma.tournament.findMany({
+      where: { edition: { in: editions } },
+      select: { id: true, name: true, edition: true, _count: { select: { scheduleItems: true } } },
+    });
+    const stale = existing.filter(
+      (t) => !sourceKeys.has(`${t.name}::${t.edition}`) && t._count.scheduleItems === 0,
+    );
+    if (stale.length > 0) {
+      await prisma.tournament.deleteMany({ where: { id: { in: stale.map((t) => t.id) } } });
+      console.warn(
+        `[loadIntoDatabase] ${sourceName}: pruned ${stale.length} stale tournament(s): ` +
+          stale.map((t) => t.name).join(", "),
+      );
+    }
   }
 
   // 3. Rankings.
