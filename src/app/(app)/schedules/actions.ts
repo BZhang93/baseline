@@ -13,6 +13,7 @@ import {
   swapScheduleEvent,
   setScheduleLegMode,
   deleteSchedule,
+  duplicateSchedule,
   type CreateScheduleInput,
 } from "@/lib/schedules";
 import type { TransportMode } from "@/generated/prisma/enums";
@@ -124,6 +125,15 @@ export async function setLegModeAction(
   await setScheduleLegMode(session.player.id, scheduleId, fromTournamentId, toTournamentId, mode);
   revalidatePath(`/schedules/${scheduleId}`);
   revalidatePath("/schedules");
+}
+
+// Clone a schedule and open the copy (BRA-98).
+export async function duplicateScheduleAction(id: string): Promise<void> {
+  const session = await getCurrentSession();
+  if (!session) return;
+  const newId = await duplicateSchedule(session.player.id, id);
+  revalidatePath("/schedules");
+  if (newId) redirect(`/schedules/${newId}`);
 }
 
 export async function deleteScheduleAction(id: string): Promise<void> {

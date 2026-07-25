@@ -19,7 +19,7 @@ import { LegModeControl } from "../_components/leg-mode-control";
 import { AddEvents } from "../_components/add-events";
 import { SwapEvent } from "../_components/swap-event";
 import { eventsOverlap } from "@/lib/schedule-path";
-import { removeEventAction, deleteScheduleAction } from "../actions";
+import { removeEventAction, deleteScheduleAction, duplicateScheduleAction } from "../actions";
 
 const externalLink =
   "rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50";
@@ -156,6 +156,14 @@ export default async function ScheduleDetailPage({
           >
             Edit
           </Link>
+          <form action={duplicateScheduleAction.bind(null, schedule.id)}>
+            <button
+              type="submit"
+              className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:border-gray-400"
+            >
+              Duplicate
+            </button>
+          </form>
           <form action={deleteScheduleAction.bind(null, schedule.id)}>
             <button
               type="submit"

@@ -957,3 +957,40 @@ export async function deleteSchedule(playerId: string, id: string): Promise<bool
   const res = await prisma.schedule.deleteMany({ where: { id, playerId } });
   return res.count > 0;
 }
+
+// Clone a schedule so a player can explore an alternative without rebuilding
+// (BRA-98). Copies events + all settings + per-leg overrides under a "(copy)"
+// name. Returns the new schedule id, or null if not owned.
+export async function duplicateSchedule(playerId: string, id: string): Promise<string | null> {
+  const s = await prisma.schedule.findFirst({
+    where: { id, playerId },
+    include: { items: { select: { tournamentId: true, order: true } } },
+  });
+  if (!s) return null;
+
+  const created = await prisma.schedule.create({
+    data: {
+      playerId,
+      name: `${s.name} (copy)`,
+      startDate: s.startDate,
+      endDate: s.endDate,
+      budgetCap: s.budgetCap,
+      maxEvents: s.maxEvents,
+      minRestDays: s.minRestDays,
+      tripCosts: s.tripCosts,
+      weightPoints: s.weightPoints,
+      weightMoney: s.weightMoney,
+      weightTravelTime: s.weightTravelTime,
+      weightTravelCost: s.weightTravelCost,
+      scorePoints: s.scorePoints,
+      scorePrizeMoney: s.scorePrizeMoney,
+      scoreTravelTimeMin: s.scoreTravelTimeMin,
+      scoreTravelCost: s.scoreTravelCost,
+      legModeOverrides: s.legModeOverrides ?? Prisma.DbNull,
+      items: { create: s.items.map((i) => ({ tournamentId: i.tournamentId, order: i.order })) },
+    },
+  });
+  // Rebuild legs so the copy has its own travel rows (totals recompute on read).
+  await recomputeScheduleTotals(created.id);
+  return created.id;
+}
