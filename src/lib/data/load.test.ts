@@ -50,9 +50,16 @@ function fakePrisma() {
     .fn()
     .mockResolvedValue([{ id: "cat1", tour: "ATP", tier: "ATP_250", season: 2026 }]);
 
+  const tournamentFindMany = vi.fn().mockResolvedValue([]); // no stale to prune
+  const tournamentDeleteMany = vi.fn();
+
   const prisma = {
     tournamentCategory: { upsert: categoryUpsert, findMany },
-    tournament: { upsert: tournamentUpsert },
+    tournament: {
+      upsert: tournamentUpsert,
+      findMany: tournamentFindMany,
+      deleteMany: tournamentDeleteMany,
+    },
     cutoff: { upsert: cutoffUpsert },
     rankingEntry: { upsert: rankingUpsert },
   } as unknown as PrismaClient;
