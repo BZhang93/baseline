@@ -275,13 +275,16 @@ function overridesForStorage(
     : Prisma.DbNull;
 }
 
-// The player's ranked transport preferences, for routing this schedule's legs.
-async function transportPrefsFor(playerId: string): Promise<TransportMode[]> {
+// The player's circuit (for eligibility scoping) + ranked transport preferences
+// (for routing this schedule's legs).
+async function playerContext(
+  playerId: string,
+): Promise<{ circuit: Player["circuit"]; transportModes: TransportMode[] }> {
   const player = await prisma.player.findUnique({
     where: { id: playerId },
-    select: { transportModes: true },
+    select: { circuit: true, transportModes: true },
   });
-  return player?.transportModes ?? [];
+  return { circuit: player?.circuit ?? null, transportModes: player?.transportModes ?? [] };
 }
 
 function byStartDate<T extends { startDate: Date }>(a: T, b: T): number {
@@ -294,12 +297,14 @@ export async function createSchedule(
   playerId: string,
   input: CreateScheduleInput,
 ): Promise<string> {
+  // Circuit eligibility (BRA-75): a men's player can't add women's events and
+  // vice-versa. Filter server-side so a crafted save can't slip past the picker.
+  const { circuit, transportModes: prefs } = await playerContext(playerId);
   const selected = await prisma.tournament.findMany({
-    where: { id: { in: input.tournamentIds } },
+    where: { id: { in: input.tournamentIds }, ...(circuit ? { circuit } : {}) },
     include: { category: true },
   });
   const events = [...selected].sort(byStartDate);
-  const prefs = await transportPrefsFor(playerId);
   const built = buildLegsAndScores(events, {
     prefs,
     priority: transportPriorityFromWeights(input.weightTravelTime, input.weightTravelCost),
@@ -385,12 +390,18 @@ export async function updateSchedule(
 ): Promise<boolean> {
   const owned = await prisma.schedule.findFirst({
     where: { id, playerId },
-    select: { id: true, legModeOverrides: true, player: { select: { transportModes: true } } },
+    select: {
+      id: true,
+      legModeOverrides: true,
+      player: { select: { circuit: true, transportModes: true } },
+    },
   });
   if (!owned) return false;
 
+  // Circuit eligibility (BRA-75): drop any out-of-circuit ids server-side.
+  const circuit = owned.player.circuit;
   const selected = await prisma.tournament.findMany({
-    where: { id: { in: input.tournamentIds } },
+    where: { id: { in: input.tournamentIds }, ...(circuit ? { circuit } : {}) },
     include: { category: true },
   });
   const events = [...selected].sort(byStartDate);
@@ -551,6 +562,9 @@ export interface ScheduleEventView {
   // True when this event collides with an earlier same-week event, so it's
   // excluded from totals and the travel path (player-feedback P0-1).
   conflict: boolean;
+  // True when the event isn't in the player's circuit (a stale item that
+  // predates circuit scoping) — flagged, not silently counted (BRA-75).
+  circuitMismatch: boolean;
   // When the player enters qualifying (Challenger/ITF, below the cut), the date
   // they actually arrive — the quali sign-in, earlier than main-draw start.
   arrivalDate: Date;
@@ -601,6 +615,8 @@ export interface ScheduleDetail {
   };
   // How many events collide with the played path (0 = clean schedule).
   conflictCount: number;
+  // How many events aren't in the player's circuit (stale items to remove).
+  circuitMismatchCount: number;
 }
 
 export async function getScheduleDetail(
@@ -621,11 +637,16 @@ export async function getScheduleDetail(
     getCutoffEstimates(player?.circuit ?? null),
   ]);
   const tournaments = schedule.items.map((i) => i.tournament);
+  // Out-of-circuit items (predating circuit scoping) are flagged AND excluded
+  // from the path/totals — never silently counted (BRA-75).
+  const inCircuit = (t: (typeof tournaments)[number]) =>
+    player?.circuit == null || t.circuit === player.circuit;
+  const eligible = tournaments.filter(inCircuit);
 
   // Resolve the played path so we can flag same-week conflicts and recompute
   // totals/legs over the real path — never trusting persisted totals, which may
   // predate this fix (player-feedback P0-1).
-  const { path, conflicts } = resolvePlayedPath(tournaments);
+  const { path, conflicts } = resolvePlayedPath(eligible);
   const conflictIds = new Set(conflicts.map((t) => t.id));
 
   const events: ScheduleEventView[] = [...tournaments].sort(byStartDate).map((t) => {
@@ -660,6 +681,7 @@ export async function getScheduleDetail(
       cutoffBasis: est?.basis ?? "estimated",
       change: est?.change ?? null,
       conflict: conflictIds.has(t.id),
+      circuitMismatch: player?.circuit != null && t.circuit !== player.circuit,
       // Quali entrants (Challenger/ITF, below the cut) arrive for the weekend
       // qualifying, earlier than main-draw Monday (player-feedback P1-6).
       arrivalDate: arrivalDate(qt, rank, cutoffRank),
@@ -667,7 +689,7 @@ export async function getScheduleDetail(
     };
   });
 
-  const built = buildLegsAndScores(tournaments, routeOptionsFor(schedule, player?.transportModes ?? []));
+  const built = buildLegsAndScores(eligible, routeOptionsFor(schedule, player?.transportModes ?? []));
   // built.legs[i] departs after path[i] to path[i + 1] (both derive from the
   // same played path), so routings[i] and the tournament pair align by index.
   // activeOverrides is the pruned set that actually applied (stale/infeasible
@@ -689,15 +711,15 @@ export async function getScheduleDetail(
     };
   });
 
-  const { expectedPoints, expectedPrize } = expectedScheduleTotals(tournaments, player);
+  const { expectedPoints, expectedPrize } = expectedScheduleTotals(eligible, player);
   const netEarnings = expectedPrize - built.scoreTravelCost - schedule.tripCosts;
-  const range = eventsDateRange(tournaments);
+  const range = eventsDateRange(eligible);
   // The trip begins at the earliest arrival — a quali entrant's first event
   // pulls the window a couple days before main-draw Monday (player-feedback P1-6).
-  const earliestArrival = events.reduce<Date | null>(
-    (min, e) => (min == null || e.arrivalDate < min ? e.arrivalDate : min),
-    null,
-  );
+  const earliestArrival = events.reduce<Date | null>((min, e) => {
+    if (e.circuitMismatch) return min; // excluded event doesn't move the window
+    return min == null || e.arrivalDate < min ? e.arrivalDate : min;
+  }, null);
 
   return {
     id: schedule.id,
@@ -718,6 +740,7 @@ export async function getScheduleDetail(
       netEarnings,
     },
     conflictCount: built.conflictCount,
+    circuitMismatchCount: events.filter((e) => e.circuitMismatch).length,
   };
 }
 
