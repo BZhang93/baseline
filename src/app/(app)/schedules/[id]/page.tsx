@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentSession } from "@/lib/player";
-import { getScheduleDetail, type ScheduleEventView } from "@/lib/schedules";
+import { getScheduleDetail, getScheduleCandidates, type ScheduleEventView } from "@/lib/schedules";
 import {
   formatDate,
   formatDateRange,
@@ -16,6 +16,7 @@ import { ChangeBadge } from "../../_components/change-badge";
 import { RenameName } from "../_components/rename-name";
 import { TripCosts } from "../_components/trip-costs";
 import { LegModeControl } from "../_components/leg-mode-control";
+import { AddEvents } from "../_components/add-events";
 import { removeEventAction, deleteScheduleAction } from "../actions";
 
 const externalLink =
@@ -118,6 +119,16 @@ export default async function ScheduleDetailPage({
 
   const schedule = await getScheduleDetail(session.player.id, id, session.player);
   if (!schedule) notFound();
+
+  // Events the player can still add (BRA-94): in-circuit, within the schedule's
+  // window, and not already in the schedule.
+  const existingIds = new Set(schedule.events.map((e) => e.tournamentId));
+  const candidates = (await getScheduleCandidates(session.player)).filter(
+    (c) =>
+      !existingIds.has(c.id) &&
+      (!schedule.startDate || c.endDate >= schedule.startDate) &&
+      (!schedule.endDate || c.startDate <= schedule.endDate),
+  );
 
   // Legs are keyed to the event they depart after, so they align even when
   // some events are same-week conflicts (excluded from the path).
@@ -228,6 +239,8 @@ export default async function ScheduleDetailPage({
           })}
         </ol>
       )}
+
+      <AddEvents scheduleId={schedule.id} candidates={candidates} />
     </div>
   );
 }

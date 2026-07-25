@@ -870,6 +870,40 @@ export async function removeEventFromSchedule(
   return true;
 }
 
+// Adds one event to a saved schedule, then recomputes totals/legs (BRA-94).
+// Circuit-checked (a men's player can't add a women's event, BRA-75) and a
+// no-op if the event is already in the schedule.
+export async function addEventToSchedule(
+  playerId: string,
+  scheduleId: string,
+  tournamentId: string,
+): Promise<boolean> {
+  const owned = await prisma.schedule.findFirst({
+    where: { id: scheduleId, playerId },
+    select: {
+      id: true,
+      player: { select: { circuit: true } },
+      items: { select: { tournamentId: true } },
+    },
+  });
+  if (!owned) return false;
+
+  // The event must exist and be in the player's circuit.
+  const circuit = owned.player.circuit;
+  const eligible = await prisma.tournament.findFirst({
+    where: { id: tournamentId, ...(circuit ? { circuit } : {}) },
+    select: { id: true },
+  });
+  if (!eligible) return false;
+
+  if (owned.items.some((i) => i.tournamentId === tournamentId)) return true; // already in
+  await prisma.scheduleItem.create({
+    data: { scheduleId, tournamentId, order: owned.items.length },
+  });
+  await recomputeScheduleTotals(scheduleId);
+  return true;
+}
+
 export async function deleteSchedule(playerId: string, id: string): Promise<boolean> {
   const res = await prisma.schedule.deleteMany({ where: { id, playerId } });
   return res.count > 0;
