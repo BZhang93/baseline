@@ -454,6 +454,7 @@ export interface ScheduleSummary {
   travelTimeMin: number | null;
   travelCost: number | null;
   netEarnings: number; // expectedPrize − travelCost − tripCosts
+  archivedAt: Date | null; // non-null once archived (BRA-100)
 }
 
 export interface PickerTournament {
@@ -537,6 +538,7 @@ export async function getPlayerSchedules(
       travelTimeMin: built.scoreTravelTimeMin,
       travelCost: built.scoreTravelCost,
       netEarnings: expectedPrize - built.scoreTravelCost - s.tripCosts,
+      archivedAt: s.archivedAt,
     };
   });
 }
@@ -955,6 +957,20 @@ export async function swapScheduleEvent(
 
 export async function deleteSchedule(playerId: string, id: string): Promise<boolean> {
   const res = await prisma.schedule.deleteMany({ where: { id, playerId } });
+  return res.count > 0;
+}
+
+// Archive (or restore) a schedule without deleting it, so a player can put last
+// season's plan aside but keep its data (BRA-100). Returns false if not owned.
+export async function setScheduleArchived(
+  playerId: string,
+  id: string,
+  archived: boolean,
+): Promise<boolean> {
+  const res = await prisma.schedule.updateMany({
+    where: { id, playerId },
+    data: { archivedAt: archived ? new Date() : null },
+  });
   return res.count > 0;
 }
 

@@ -19,7 +19,12 @@ import { LegModeControl } from "../_components/leg-mode-control";
 import { AddEvents } from "../_components/add-events";
 import { SwapEvent } from "../_components/swap-event";
 import { eventsOverlap } from "@/lib/schedule-path";
-import { removeEventAction, deleteScheduleAction, duplicateScheduleAction } from "../actions";
+import {
+  removeEventAction,
+  deleteScheduleAction,
+  duplicateScheduleAction,
+  archiveScheduleAction,
+} from "../actions";
 
 const externalLink =
   "rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50";
@@ -64,7 +69,7 @@ function EventRow({
           <form action={removeEventAction.bind(null, scheduleId, e.tournamentId)}>
             <button
               type="submit"
-              className="text-xs text-gray-500 hover:text-red-600"
+              className="inline-flex min-h-[44px] items-center text-xs text-gray-500 hover:text-red-600"
             >
               Remove
             </button>
@@ -162,6 +167,14 @@ export default async function ScheduleDetailPage({
               className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:border-gray-400"
             >
               Duplicate
+            </button>
+          </form>
+          <form action={archiveScheduleAction.bind(null, schedule.id)}>
+            <button
+              type="submit"
+              className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:border-gray-400"
+            >
+              Archive
             </button>
           </form>
           <form action={deleteScheduleAction.bind(null, schedule.id)}>
