@@ -9,6 +9,7 @@ import {
   renameSchedule,
   updateScheduleTripCosts,
   removeEventFromSchedule,
+  addEventToSchedule,
   setScheduleLegMode,
   deleteSchedule,
   type CreateScheduleInput,
@@ -75,6 +76,15 @@ export async function updateTripCostsAction(id: string, tripCosts: number): Prom
   if (!session) return;
   await updateScheduleTripCosts(session.player.id, id, tripCosts);
   revalidatePath(`/schedules/${id}`);
+  revalidatePath("/schedules");
+}
+
+// Add one event to a saved schedule from its detail view (BRA-94).
+export async function addEventAction(scheduleId: string, tournamentId: string): Promise<void> {
+  const session = await getCurrentSession();
+  if (!session) return;
+  await addEventToSchedule(session.player.id, scheduleId, tournamentId);
+  revalidatePath(`/schedules/${scheduleId}`);
   revalidatePath("/schedules");
 }
 
