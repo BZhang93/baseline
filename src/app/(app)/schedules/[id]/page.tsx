@@ -39,6 +39,10 @@ function EventRow({
           <p className="text-sm text-gray-500">
             {e.city}, {e.country} · {formatDateRange(e.startDate, e.endDate)}
           </p>
+          <p className="mt-0.5 text-xs text-gray-400">
+            Depart {formatDate(e.departure.earliest)} (1st-round loss) –{" "}
+            {formatDate(e.departure.latest)} (win · {e.departure.rounds} rounds)
+          </p>
           {e.qualiArrival && (
             <p className="mt-1 text-xs font-medium text-amber-700">
               Qualifying from {formatDate(e.arrivalDate)} — arrive before main draw

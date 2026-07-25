@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { TournamentView } from "@/lib/tournaments";
-import { formatDateRange, formatMoney, formatSurface, formatTour } from "@/lib/format";
+import { formatDate, formatDateRange, formatMoney, formatSurface, formatTour } from "@/lib/format";
+import { departureWindow } from "@/lib/departure";
 import { lodgingSearchUrl } from "@/lib/booking-links";
 import { GapBadge } from "../../_components/gap-badge";
 import { ChangeBadge } from "../../_components/change-badge";
@@ -17,6 +18,7 @@ function EventCard({
   selected: boolean;
   onToggle: () => void;
 }) {
+  const dep = departureWindow(t.startDate, t.endDate, t.drawSize);
   return (
     <li className={`rounded-lg border p-4 ${selected ? "border-black" : "border-gray-200"}`}>
       <div className="flex items-start justify-between gap-3">
@@ -26,6 +28,9 @@ function EventCard({
             <h3 className="font-medium">{t.name}</h3>
             <p className="text-sm text-gray-500">
               {t.city}, {t.country} · {formatDateRange(t.startDate, t.endDate)}
+            </p>
+            <p className="text-xs text-gray-400">
+              Depart {formatDate(dep.earliest)}–{formatDate(dep.latest)} (draw {t.drawSize})
             </p>
           </div>
         </label>
