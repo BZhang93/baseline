@@ -3,7 +3,7 @@ import {
   estimateMode,
   modeFeasible,
   routeLeg,
-  transportPriorityFromWeightPoints,
+  transportPriorityFromWeights,
   parseLegModeOverrides,
   legKey,
 } from "./transport";
@@ -94,11 +94,11 @@ describe("routeLeg", () => {
   });
 });
 
-describe("transportPriorityFromWeightPoints", () => {
-  it("maps the priority slider ends to time/cost and the middle to balanced", () => {
-    expect(transportPriorityFromWeightPoints(0.5)).toBe("time"); // protect body
-    expect(transportPriorityFromWeightPoints(2)).toBe("cost"); // maximize points
-    expect(transportPriorityFromWeightPoints(1.25)).toBe("balanced");
+describe("transportPriorityFromWeights", () => {
+  it("favors time when travel-time weight is higher, cost when cost is higher", () => {
+    expect(transportPriorityFromWeights(3, 1)).toBe("time"); // protect body
+    expect(transportPriorityFromWeights(1, 3)).toBe("cost"); // save money
+    expect(transportPriorityFromWeights(2, 2)).toBe("balanced");
   });
 });
 

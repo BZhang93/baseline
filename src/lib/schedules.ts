@@ -18,7 +18,7 @@ import {
   routeLeg,
   legKey,
   parseLegModeOverrides,
-  transportPriorityFromWeightPoints,
+  transportPriorityFromWeights,
   modeFeasible,
   type LegRouting,
   type LegAlternative,
@@ -255,12 +255,12 @@ export function buildLegsAndScores(events: LegEvent[], opts: RouteOptions = DEFA
 // prefs, the priority derived from the schedule's weighting, and any saved
 // per-leg overrides.
 function routeOptionsFor(
-  schedule: { weightPoints: number; legModeOverrides: unknown },
+  schedule: { weightTravelTime: number; weightTravelCost: number; legModeOverrides: unknown },
   prefs: TransportMode[],
 ): RouteOptions {
   return {
     prefs,
-    priority: transportPriorityFromWeightPoints(schedule.weightPoints),
+    priority: transportPriorityFromWeights(schedule.weightTravelTime, schedule.weightTravelCost),
     overrides: parseLegModeOverrides(schedule.legModeOverrides),
   };
 }
@@ -302,7 +302,7 @@ export async function createSchedule(
   const prefs = await transportPrefsFor(playerId);
   const built = buildLegsAndScores(events, {
     prefs,
-    priority: transportPriorityFromWeightPoints(input.weightPoints),
+    priority: transportPriorityFromWeights(input.weightTravelTime, input.weightTravelCost),
     overrides: {},
   });
 
@@ -340,14 +340,19 @@ export interface ScheduleEditData {
   maxEvents: string;
   minRestDays: string;
   tripCosts: string;
-  priority: number;
+  restPriority: number;
+  costPriority: number;
   eventIds: string[];
 }
 
 const toDateStr = (d: Date | null): string => (d ? d.toISOString().slice(0, 10) : "");
 
-// Pre-fill values for editing a schedule in the create form. Priority is
-// reverse-derived from the stored weights (weightPoints = 0.5 + 1.5·p).
+// Pre-fill values for editing a schedule in the create form. The rest/cost
+// priorities are reverse-derived from the stored travel weights
+// (weightTravel* = 0.5 + 3·(priority/100)).
+const priorityFromWeight = (w: number): number =>
+  Math.max(0, Math.min(100, Math.round(((w - 0.5) / 3) * 100)));
+
 export async function getScheduleForEdit(
   playerId: string,
   id: string,
@@ -357,7 +362,6 @@ export async function getScheduleForEdit(
     include: { items: { orderBy: { order: "asc" } } },
   });
   if (!s) return null;
-  const priority = Math.max(0, Math.min(100, Math.round(((s.weightPoints - 0.5) / 1.5) * 100)));
   return {
     name: s.name,
     from: toDateStr(s.startDate),
@@ -366,7 +370,8 @@ export async function getScheduleForEdit(
     maxEvents: s.maxEvents?.toString() ?? "",
     minRestDays: s.minRestDays?.toString() ?? "",
     tripCosts: s.tripCosts ? s.tripCosts.toString() : "",
-    priority,
+    restPriority: priorityFromWeight(s.weightTravelTime),
+    costPriority: priorityFromWeight(s.weightTravelCost),
     eventIds: s.items.map((i) => i.tournamentId),
   };
 }
@@ -393,7 +398,7 @@ export async function updateSchedule(
   // prunes any that no longer match a leg (removed events / new distances).
   const built = buildLegsAndScores(events, {
     prefs: owned.player.transportModes,
-    priority: transportPriorityFromWeightPoints(input.weightPoints),
+    priority: transportPriorityFromWeights(input.weightTravelTime, input.weightTravelCost),
     overrides: parseLegModeOverrides(owned.legModeOverrides),
   });
 
@@ -723,7 +728,8 @@ export async function recomputeScheduleTotals(scheduleId: string): Promise<void>
   const schedule = await prisma.schedule.findUnique({
     where: { id: scheduleId },
     select: {
-      weightPoints: true,
+      weightTravelTime: true,
+      weightTravelCost: true,
       legModeOverrides: true,
       player: { select: { transportModes: true } },
       items: { include: { tournament: { include: { category: true } } } },
