@@ -151,7 +151,7 @@ export function BrowseResults({ tournaments }: { tournaments: TournamentView[] }
           .
         </p>
       ) : (
-        <ul className="mt-4 grid gap-3 pb-20">
+        <ul className="mt-4 grid gap-3 pb-20 lg:grid-cols-2">
           {displayed.map((t) => (
             <EventCard
               key={t.id}
