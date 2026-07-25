@@ -649,17 +649,32 @@ export function CreateScheduleForm({
           )}
           {filteredAvailable.map((t) => {
             const collides = conflictsWith(t, path);
+            const v = eventExpectedValue(t);
+            const badge = ACCEPTANCE[t.acceptance];
             return (
               <li
                 key={t.id}
-                className="flex items-center justify-between rounded border border-gray-200 px-3 py-2 text-sm"
+                className="flex items-start justify-between gap-2 rounded border border-gray-200 px-3 py-2 text-sm"
               >
-                <span>
-                  {t.name}{" "}
-                  <span className="text-gray-500">
-                    · {t.city}, {t.country} · {formatDateRange(t.startDate, t.endDate)} · {formatTour(t.tour)}
-                  </span>
-                </span>
+                <div>
+                  <div>
+                    {t.name}{" "}
+                    <span className="text-gray-500">
+                      · {formatDateRange(t.startDate, t.endDate)} · {formatTour(t.tour)}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
+                    <span>
+                      {t.city}, {t.country} · {formatSurface(t.surface)}
+                    </span>
+                    <span>
+                      ≈{v.expectedPoints} pts · {formatMoney(v.expectedPrize)}
+                    </span>
+                    {badge && (
+                      <span className={`rounded px-1.5 py-0.5 ${badge.className}`}>{badge.label}</span>
+                    )}
+                  </div>
+                </div>
                 {collides ? (
                   <span className="whitespace-nowrap text-xs text-gray-400" title="Same week as a selected event">
                     Same week
@@ -667,7 +682,7 @@ export function CreateScheduleForm({
                 ) : (
                   <button
                     onClick={() => add(t.id)}
-                    className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
+                    className="whitespace-nowrap rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
                   >
                     Add
                   </button>
