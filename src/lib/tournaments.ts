@@ -290,10 +290,15 @@ export function buildCutoffAndGap(
   const histRank = cutoff?.historicalCutoffRank ?? null;
   const liveCutoffPoints = rankTour ? pointsAt(rankTour, liveRank) : null;
 
-  const playerRank =
-    player?.ranking != null && player.rankingTour === tour ? player.ranking : null;
+  // The player's ranking is comparable to any event's cutoff on their own
+  // circuit — Challenger/ITF cutoffs are on the same ranking scale — so use it
+  // for the rank gap even when the event isn't the player's exact ranking tour
+  // (Browse/detail are circuit-scoped). This gives a consistent "X spots short"
+  // on every tier instead of an "unknown" for Challenger/ITF (BRA-88). Points
+  // exist only for ATP/WTA, so they stay tour-gated.
+  const playerRank = player?.ranking ?? null;
   const playerPoints =
-    playerRank != null && rankTour ? pointsAt(rankTour, playerRank) : null;
+    player?.rankingTour === tour && rankTour ? pointsAt(rankTour, playerRank) : null;
 
   return {
     liveCutoff: { rank: liveRank, points: liveCutoffPoints },

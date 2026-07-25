@@ -8,7 +8,7 @@ import {
 } from "@/lib/tournaments";
 import { Tour, Surface } from "@/generated/prisma/client";
 import { resolveBrowseTours } from "@/lib/circuit";
-import { formatSurface, formatTour } from "@/lib/format";
+import { formatSurface, formatTour, formatDate, formatDateRange } from "@/lib/format";
 import { BrowseResults } from "./_components/browse-results";
 
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -74,6 +74,16 @@ export default async function BrowsePage({
 
   const tournaments = await getBrowseData(filters, player);
 
+  // Header reflects the actual date window + result count, not a fixed label.
+  const rangeLabel =
+    from && to
+      ? formatDateRange(new Date(from), new Date(to))
+      : from
+        ? `from ${formatDate(new Date(from))}`
+        : to
+          ? `through ${formatDate(new Date(to))}`
+          : "all dates";
+
   // Fixed height so text inputs, selects, and date pickers line up (native
   // selects otherwise render a different height).
   const inputClass = "h-9 rounded border border-gray-300 px-2 text-sm";
@@ -81,7 +91,9 @@ export default async function BrowsePage({
   return (
     <div>
       <h1 className="text-2xl font-semibold">Browse Tournaments</h1>
-      <p className="mt-1 text-sm text-gray-500">July 2026 · {tournaments.length} events</p>
+      <p className="mt-1 text-sm text-gray-500">
+        {rangeLabel} · {tournaments.length} event{tournaments.length === 1 ? "" : "s"}
+      </p>
 
       <form method="get" className="mt-4 flex flex-wrap items-end gap-2">
         <input
