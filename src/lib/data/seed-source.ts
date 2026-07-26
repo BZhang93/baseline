@@ -120,6 +120,22 @@ const categories: CategoryInput[] = [
     source: "curated",
   },
   {
+    tour: Tour.CHALLENGER,
+    tier: "CHALLENGER_75",
+    season: SEASON,
+    pointsByRound: { W: 75, F: 44, SF: 25, QF: 14, R16: 6, R32: 2 },
+    prizeMoneyByRound: { W: 10800, F: 6400, SF: 3800, QF: 2200, R16: 1300, R32: 800 },
+    source: "curated",
+  },
+  {
+    tour: Tour.CHALLENGER,
+    tier: "CHALLENGER_50",
+    season: SEASON,
+    pointsByRound: { W: 50, F: 29, SF: 17, QF: 9, R16: 4, R32: 1 },
+    prizeMoneyByRound: { W: 7500, F: 4400, SF: 2600, QF: 1500, R16: 900, R32: 550 },
+    source: "curated",
+  },
+  {
     tour: Tour.ITF,
     tier: "ITF_M25",
     season: SEASON,
@@ -507,9 +523,167 @@ const wta125Events: Omit<TournamentInput, "edition">[] = [
   { name: "Cali Open", tour: Tour.WTA, tier: "WTA_125", city: "Cali", country: "Colombia", countryCode: "CO", lat: 3.4516, long: -76.532, surface: Surface.CLAY, startDate: new Date("2026-11-02"), endDate: new Date("2026-11-08"), drawSize: 32 },
 ];
 
-const tournaments: TournamentInput[] = [...events, ...restOfSeasonEvents, ...wta125Events].map(
-  (e) => ({ ...e, edition: SEASON }),
-);
+// Country centroids [lat, long] — Challenger host towns are often too small to
+// geocode precisely, so each event is placed at its country's centroid. That
+// keeps continent-level travel estimates sensible (a live feed can refine to the
+// venue). Same-country events therefore share a point (zero intra-country leg),
+// an accepted prototype approximation.
+const COUNTRY_CENTROIDS: Record<string, [number, number]> = {
+  DE: [51.16, 10.45], PL: [51.92, 19.15], US: [39.83, -98.58], TR: [39.0, 35.24],
+  BG: [42.73, 25.49], IT: [42.5, 12.5], KZ: [48.02, 66.92], MX: [23.63, -102.55],
+  CA: [56.13, -106.35], JM: [18.11, -77.3], CZ: [49.82, 15.47], GB: [55.38, -3.44],
+  CH: [46.82, 8.23], UZ: [41.38, 64.59], ES: [40.46, -3.75], PT: [39.4, -8.22],
+  CN: [35.86, 104.2], AT: [47.52, 14.55], FR: [46.6, 1.89], VN: [14.06, 108.28],
+  AR: [-38.42, -63.62], BR: [-14.24, -51.93], CL: [-35.68, -71.54], CO: [4.57, -74.3],
+  BO: [-16.29, -63.59], KR: [35.91, 127.77], EC: [-1.83, -78.18], BW: [-22.33, 24.68],
+  SK: [48.67, 19.7], TW: [23.7, 120.96], PE: [-9.19, -75.02], JP: [36.2, 138.25],
+  AU: [-25.27, 133.78], TN: [33.89, 9.54], FI: [61.92, 25.75], UY: [-32.52, -55.77],
+};
+
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// Real Aug–Nov 2026 ATP Challenger Tour calendar, from the 2026 ATP Challenger
+// Tour Wikipedia page — the core circuit for a top-Challenger/ITF man (the demo
+// "Bryan Tennis" persona). Compact [city, cc, country, surface, tier, start]
+// rows expanded below; no cutoff (estimator fills in).
+const challengerRows: [string, string, string, Surface, string, string][] = [
+  // August
+  ["Hagen", "DE", "Germany", Surface.CLAY, "CH100", "2026-08-03"],
+  ["Grodzisk Mazowiecki", "PL", "Poland", Surface.HARD, "CH75", "2026-08-03"],
+  ["Lexington", "US", "United States", Surface.HARD, "CH75", "2026-08-03"],
+  ["Istanbul", "TR", "Turkey", Surface.HARD, "CH50", "2026-08-03"],
+  ["Plovdiv", "BG", "Bulgaria", Surface.CLAY, "CH50", "2026-08-03"],
+  ["Brownsburg", "US", "United States", Surface.HARD, "CH75", "2026-08-10"],
+  ["Hamburg", "DE", "Germany", Surface.CLAY, "CH75", "2026-08-10"],
+  ["Todi", "IT", "Italy", Surface.CLAY, "CH75", "2026-08-10"],
+  ["Astana", "KZ", "Kazakhstan", Surface.HARD, "CH50", "2026-08-10"],
+  ["Cancún", "MX", "Mexico", Surface.HARD, "CH125", "2026-08-17"],
+  ["Quebec City", "CA", "Canada", Surface.HARD, "CH125", "2026-08-17"],
+  ["Kingston", "JM", "Jamaica", Surface.HARD, "CH75", "2026-08-17"],
+  ["Prague", "CZ", "Czech Republic", Surface.CLAY, "CH75", "2026-08-17"],
+  ["Roehampton", "GB", "United Kingdom", Surface.HARD, "CH50", "2026-08-17"],
+  ["Sion", "CH", "Switzerland", Surface.CLAY, "CH50", "2026-08-17"],
+  ["Tashkent", "UZ", "Uzbekistan", Surface.HARD, "CH50", "2026-08-17"],
+  ["Kingston", "JM", "Jamaica", Surface.HARD, "CH75", "2026-08-24"],
+  ["Augsburg", "DE", "Germany", Surface.CLAY, "CH50", "2026-08-24"],
+  ["Roehampton", "GB", "United Kingdom", Surface.HARD, "CH50", "2026-08-24"],
+  ["Como", "IT", "Italy", Surface.CLAY, "CH75", "2026-08-31"],
+  ["Manacor", "ES", "Spain", Surface.HARD, "CH75", "2026-08-31"],
+  ["Porto", "PT", "Portugal", Surface.CLAY, "CH75", "2026-08-31"],
+  ["Zhangjiagang", "CN", "China", Surface.HARD, "CH75", "2026-08-31"],
+  ["Plovdiv", "BG", "Bulgaria", Surface.CLAY, "CH50", "2026-08-31"],
+  // September
+  ["Genoa", "IT", "Italy", Surface.CLAY, "CH125", "2026-09-07"],
+  ["Seville", "ES", "Spain", Surface.CLAY, "CH125", "2026-09-07"],
+  ["Shanghai", "CN", "China", Surface.HARD, "CH100", "2026-09-07"],
+  ["Tulln", "AT", "Austria", Surface.CLAY, "CH100", "2026-09-07"],
+  ["Cassis", "FR", "France", Surface.HARD, "CH75", "2026-09-07"],
+  ["Istanbul", "TR", "Turkey", Surface.HARD, "CH75", "2026-09-07"],
+  ["Phan Thiet", "VN", "Vietnam", Surface.HARD, "CH50", "2026-09-07"],
+  ["Szczecin", "PL", "Poland", Surface.CLAY, "CH125", "2026-09-14"],
+  ["Tiburon", "US", "United States", Surface.HARD, "CH125", "2026-09-14"],
+  ["Guangzhou", "CN", "China", Surface.HARD, "CH100", "2026-09-14"],
+  ["Rennes", "FR", "France", Surface.HARD, "CH100", "2026-09-14"],
+  ["Biella", "IT", "Italy", Surface.CLAY, "CH50", "2026-09-14"],
+  ["Phan Thiet", "VN", "Vietnam", Surface.HARD, "CH50", "2026-09-14"],
+  ["Saint-Tropez", "FR", "France", Surface.HARD, "CH125", "2026-09-21"],
+  ["Buenos Aires", "AR", "Argentina", Surface.CLAY, "CH75", "2026-09-21"],
+  ["Plovdiv", "BG", "Bulgaria", Surface.CLAY, "CH75", "2026-09-21"],
+  ["Genoa", "IT", "Italy", Surface.CLAY, "CH50", "2026-09-21"],
+  ["Porto", "PT", "Portugal", Surface.HARD, "CH125", "2026-09-28"],
+  ["Jingshan", "CN", "China", Surface.HARD, "CH100", "2026-09-28"],
+  ["Columbus", "US", "United States", Surface.HARD, "CH75", "2026-09-28"],
+  ["Curitiba", "BR", "Brazil", Surface.CLAY, "CH75", "2026-09-28"],
+  ["Mouilleron-le-Captif", "FR", "France", Surface.HARD, "CH75", "2026-09-28"],
+  ["Bari", "IT", "Italy", Surface.CLAY, "CH50", "2026-09-28"],
+  // October
+  ["Villena", "ES", "Spain", Surface.HARD, "CH100", "2026-10-05"],
+  ["Antofagasta", "CL", "Chile", Surface.CLAY, "CH75", "2026-10-05"],
+  ["Braga", "PT", "Portugal", Surface.CLAY, "CH75", "2026-10-05"],
+  ["Palermo", "IT", "Italy", Surface.CLAY, "CH50", "2026-10-05"],
+  ["Jinan", "CN", "China", Surface.HARD, "CH125", "2026-10-12"],
+  ["Olbia", "IT", "Italy", Surface.HARD, "CH125", "2026-10-12"],
+  ["Maia", "PT", "Portugal", Surface.CLAY, "CH100", "2026-10-12"],
+  ["Roanne", "FR", "France", Surface.HARD, "CH100", "2026-10-12"],
+  ["Cali", "CO", "Colombia", Surface.CLAY, "CH75", "2026-10-12"],
+  ["Catania", "IT", "Italy", Surface.CLAY, "CH50", "2026-10-12"],
+  ["Lisbon", "PT", "Portugal", Surface.CLAY, "CH100", "2026-10-19"],
+  ["Alicante", "ES", "Spain", Surface.HARD, "CH75", "2026-10-19"],
+  ["Nansha", "CN", "China", Surface.HARD, "CH75", "2026-10-19"],
+  ["Santa Cruz de la Sierra", "BO", "Bolivia", Surface.CLAY, "CH75", "2026-10-19"],
+  ["Seoul", "KR", "South Korea", Surface.HARD, "CH125", "2026-10-26"],
+  ["Brest", "FR", "France", Surface.HARD, "CH100", "2026-10-26"],
+  ["Sioux Falls", "US", "United States", Surface.HARD, "CH100", "2026-10-26"],
+  ["Guayaquil", "EC", "Ecuador", Surface.CLAY, "CH75", "2026-10-26"],
+  ["Ningbo", "CN", "China", Surface.HARD, "CH75", "2026-10-26"],
+  ["Gaborone", "BW", "Botswana", Surface.HARD, "CH50", "2026-10-26"],
+  // November
+  ["Bratislava", "SK", "Slovakia", Surface.HARD, "CH125", "2026-11-02"],
+  ["Sauipe", "BR", "Brazil", Surface.CLAY, "CH125", "2026-11-02"],
+  ["Taipei", "TW", "Taiwan", Surface.HARD, "CH100", "2026-11-02"],
+  ["Charlottesville", "US", "United States", Surface.HARD, "CH75", "2026-11-02"],
+  ["Villa María", "AR", "Argentina", Surface.CLAY, "CH50", "2026-11-02"],
+  ["Orléans", "FR", "France", Surface.HARD, "CH125", "2026-11-09"],
+  ["Knoxville", "US", "United States", Surface.HARD, "CH75", "2026-11-09"],
+  ["Matsuyama", "JP", "Japan", Surface.HARD, "CH75", "2026-11-09"],
+  ["Lima", "PE", "Peru", Surface.CLAY, "CH75", "2026-11-09"],
+  ["Brisbane", "AU", "Australia", Surface.HARD, "CH75", "2026-11-09"],
+  ["Monastir", "TN", "Tunisia", Surface.HARD, "CH50", "2026-11-09"],
+  ["Helsinki", "FI", "Finland", Surface.HARD, "CH125", "2026-11-16"],
+  ["Metz", "FR", "France", Surface.HARD, "CH125", "2026-11-16"],
+  ["Montevideo", "UY", "Uruguay", Surface.CLAY, "CH75", "2026-11-16"],
+  ["Kobe", "JP", "Japan", Surface.HARD, "CH75", "2026-11-16"],
+  ["Drummondville", "CA", "Canada", Surface.HARD, "CH75", "2026-11-16"],
+  ["Sydney", "AU", "Australia", Surface.HARD, "CH75", "2026-11-16"],
+  ["Champaign", "US", "United States", Surface.HARD, "CH50", "2026-11-16"],
+  ["Florianópolis", "BR", "Brazil", Surface.CLAY, "CH75", "2026-11-23"],
+  ["Playford", "AU", "Australia", Surface.HARD, "CH75", "2026-11-23"],
+  ["Yokohama", "JP", "Japan", Surface.HARD, "CH75", "2026-11-23"],
+  ["Monastir", "TN", "Tunisia", Surface.HARD, "CH50", "2026-11-23"],
+];
+
+// Expand compact Challenger rows into events: name "<City> Challenger" (with a
+// date tag when a city recurs in-window, so the (name, edition) key stays
+// unique), country-centroid coords, endDate = Sunday (start + 6), draw 48.
+function expandChallengers(
+  rows: [string, string, string, Surface, string, string][],
+): Omit<TournamentInput, "edition">[] {
+  const cityCounts = new Map<string, number>();
+  for (const [city] of rows) cityCounts.set(city, (cityCounts.get(city) ?? 0) + 1);
+  return rows.map(([city, cc, country, surface, ch, start]) => {
+    const [lat, long] = COUNTRY_CENTROIDS[cc];
+    const startDate = new Date(start);
+    const endDate = new Date(startDate);
+    endDate.setUTCDate(endDate.getUTCDate() + 6);
+    const tag =
+      (cityCounts.get(city) ?? 0) > 1
+        ? ` (${MON[startDate.getUTCMonth()]} ${startDate.getUTCDate()})`
+        : "";
+    return {
+      name: `${city} Challenger${tag}`,
+      tour: Tour.CHALLENGER,
+      tier: `CHALLENGER_${ch.slice(2)}`,
+      city,
+      country,
+      countryCode: cc,
+      lat,
+      long,
+      surface,
+      startDate,
+      endDate,
+      drawSize: 48,
+    };
+  });
+}
+
+const challengerEvents = expandChallengers(challengerRows);
+
+const tournaments: TournamentInput[] = [
+  ...events,
+  ...restOfSeasonEvents,
+  ...wta125Events,
+  ...challengerEvents,
+].map((e) => ({ ...e, edition: SEASON }));
 
 // ---------------------------------------------------------------------------
 // Rankings — a synthetic but plausible decreasing points curve (ranks 1..300)
