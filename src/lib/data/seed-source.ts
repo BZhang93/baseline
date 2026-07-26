@@ -474,10 +474,42 @@ const restOfSeasonEvents: Omit<TournamentInput, "edition">[] = [
   { name: "Stockholm Open", tour: Tour.ATP, tier: "ATP_250", city: "Stockholm", country: "Sweden", countryCode: "SE", lat: 59.3293, long: 18.0686, surface: Surface.HARD, startDate: new Date("2026-11-09"), endDate: new Date("2026-11-15"), drawSize: 28 },
 ];
 
-const tournaments: TournamentInput[] = [...events, ...restOfSeasonEvents].map((e) => ({
-  ...e,
-  edition: SEASON,
-}));
+// Real WTA 125 (Challenger-level) calendar, Aug–Nov 2026, from the 2026 WTA 125
+// tournaments Wikipedia page. These are the bread-and-butter events for a
+// ranked-~180 player like the demo persona, and they span many regions —
+// useful for exercising region/budget-reachability planning. WTA_125 category
+// already exists; no cutoff (estimator fills in). Draw 32.
+const wta125Events: Omit<TournamentInput, "edition">[] = [
+  { name: "T-Mobile Polish Open", tour: Tour.WTA, tier: "WTA_125", city: "Warsaw", country: "Poland", countryCode: "PL", lat: 52.2297, long: 21.0122, surface: Surface.HARD, startDate: new Date("2026-08-03"), endDate: new Date("2026-08-09"), drawSize: 32 },
+  { name: "Ennoble Care Philly Open", tour: Tour.WTA, tier: "WTA_125", city: "Philadelphia", country: "United States", countryCode: "US", lat: 39.9526, long: -75.1652, surface: Surface.HARD, startDate: new Date("2026-08-24"), endDate: new Date("2026-08-30"), drawSize: 32 },
+  { name: "Montreux Nestlé Open", tour: Tour.WTA, tier: "WTA_125", city: "Montreux", country: "Switzerland", countryCode: "CH", lat: 46.4312, long: 6.9107, surface: Surface.CLAY, startDate: new Date("2026-09-07"), endDate: new Date("2026-09-13"), drawSize: 32 },
+  { name: "ATIK Antalya Open", tour: Tour.WTA, tier: "WTA_125", city: "Antalya", country: "Turkey", countryCode: "TR", lat: 36.8969, long: 30.7133, surface: Surface.CLAY, startDate: new Date("2026-09-07"), endDate: new Date("2026-09-13"), drawSize: 32 },
+  { name: "Kia Open", tour: Tour.WTA, tier: "WTA_125", city: "Barranquilla", country: "Colombia", countryCode: "CO", lat: 10.9685, long: -74.7813, surface: Surface.HARD, startDate: new Date("2026-09-07"), endDate: new Date("2026-09-13"), drawSize: 32 },
+  { name: "BBVA Open Internacional de Valencia", tour: Tour.WTA, tier: "WTA_125", city: "Valencia", country: "Spain", countryCode: "ES", lat: 39.4699, long: -0.3763, surface: Surface.CLAY, startDate: new Date("2026-09-14"), endDate: new Date("2026-09-20"), drawSize: 32 },
+  { name: "Zavarovalnica Triglav Ljubljana", tour: Tour.WTA, tier: "WTA_125", city: "Ljubljana", country: "Slovenia", countryCode: "SI", lat: 46.0569, long: 14.5058, surface: Surface.CLAY, startDate: new Date("2026-09-14"), endDate: new Date("2026-09-20"), drawSize: 32 },
+  { name: "Caldas da Rainha Ladies Open", tour: Tour.WTA, tier: "WTA_125", city: "Caldas da Rainha", country: "Portugal", countryCode: "PT", lat: 39.4033, long: -9.1359, surface: Surface.HARD, startDate: new Date("2026-09-14"), endDate: new Date("2026-09-20"), drawSize: 32 },
+  { name: "Delta Motors Tolentino Open", tour: Tour.WTA, tier: "WTA_125", city: "Tolentino", country: "Italy", countryCode: "IT", lat: 43.2091, long: 13.2846, surface: Surface.CLAY, startDate: new Date("2026-09-21"), endDate: new Date("2026-09-27"), drawSize: 32 },
+  { name: "Eupago Porto Open", tour: Tour.WTA, tier: "WTA_125", city: "Porto", country: "Portugal", countryCode: "PT", lat: 41.1579, long: -8.6291, surface: Surface.HARD, startDate: new Date("2026-09-21"), endDate: new Date("2026-09-27"), drawSize: 32 },
+  { name: "Ankara Open", tour: Tour.WTA, tier: "WTA_125", city: "Ankara", country: "Turkey", countryCode: "TR", lat: 39.9334, long: 32.8597, surface: Surface.HARD, startDate: new Date("2026-09-21"), endDate: new Date("2026-09-27"), drawSize: 32 },
+  { name: "Jingshan Tennis Open", tour: Tour.WTA, tier: "WTA_125", city: "Jingshan", country: "China", countryCode: "CN", lat: 31.0173, long: 113.1112, surface: Surface.HARD, startDate: new Date("2026-09-28"), endDate: new Date("2026-10-04"), drawSize: 32 },
+  { name: "Adana Open", tour: Tour.WTA, tier: "WTA_125", city: "Adana", country: "Turkey", countryCode: "TR", lat: 37.0, long: 35.3213, surface: Surface.HARD, startDate: new Date("2026-09-28"), endDate: new Date("2026-10-04"), drawSize: 32 },
+  { name: "Suzhou Open", tour: Tour.WTA, tier: "WTA_125", city: "Suzhou", country: "China", countryCode: "CN", lat: 31.2989, long: 120.5853, surface: Surface.HARD, startDate: new Date("2026-10-05"), endDate: new Date("2026-10-11"), drawSize: 32 },
+  { name: "Samsun Open", tour: Tour.WTA, tier: "WTA_125", city: "Samsun", country: "Turkey", countryCode: "TR", lat: 41.2867, long: 36.33, surface: Surface.HARD, startDate: new Date("2026-10-05"), endDate: new Date("2026-10-11"), drawSize: 32 },
+  { name: "Vanda Pharmaceuticals Mallorca Women's Championships", tour: Tour.WTA, tier: "WTA_125", city: "Mallorca", country: "Spain", countryCode: "ES", lat: 39.5696, long: 2.6502, surface: Surface.CLAY, startDate: new Date("2026-10-12"), endDate: new Date("2026-10-18"), drawSize: 32 },
+  { name: "Lisboa Belém Open", tour: Tour.WTA, tier: "WTA_125", city: "Lisbon", country: "Portugal", countryCode: "PT", lat: 38.7223, long: -9.1393, surface: Surface.CLAY, startDate: new Date("2026-10-12"), endDate: new Date("2026-10-18"), drawSize: 32 },
+  { name: "RoveretOpen Città della Pace", tour: Tour.WTA, tier: "WTA_125", city: "Rovereto", country: "Italy", countryCode: "IT", lat: 45.8906, long: 11.0399, surface: Surface.HARD, startDate: new Date("2026-10-12"), endDate: new Date("2026-10-18"), drawSize: 32 },
+  { name: "Rio Ladies Open", tour: Tour.WTA, tier: "WTA_125", city: "Rio de Janeiro", country: "Brazil", countryCode: "BR", lat: -22.9068, long: -43.1729, surface: Surface.CLAY, startDate: new Date("2026-10-19"), endDate: new Date("2026-10-25"), drawSize: 32 },
+  { name: "Valle d'Aosta Ladies Open", tour: Tour.WTA, tier: "WTA_125", city: "Courmayeur", country: "Italy", countryCode: "IT", lat: 45.7911, long: 6.9694, surface: Surface.HARD, startDate: new Date("2026-10-26"), endDate: new Date("2026-11-01"), drawSize: 32 },
+  { name: "Querétaro Open", tour: Tour.WTA, tier: "WTA_125", city: "Querétaro", country: "Mexico", countryCode: "MX", lat: 20.5888, long: -100.3899, surface: Surface.CLAY, startDate: new Date("2026-10-26"), endDate: new Date("2026-11-01"), drawSize: 32 },
+  { name: "Abierto de Curitiba", tour: Tour.WTA, tier: "WTA_125", city: "Curitiba", country: "Brazil", countryCode: "BR", lat: -25.4284, long: -49.2733, surface: Surface.CLAY, startDate: new Date("2026-10-26"), endDate: new Date("2026-11-01"), drawSize: 32 },
+  { name: "Angola Ladies Open", tour: Tour.WTA, tier: "WTA_125", city: "Luanda", country: "Angola", countryCode: "AO", lat: -8.839, long: 13.2894, surface: Surface.HARD, startDate: new Date("2026-11-02"), endDate: new Date("2026-11-08"), drawSize: 32 },
+  { name: "ATC Open", tour: Tour.WTA, tier: "WTA_125", city: "Miami", country: "United States", countryCode: "US", lat: 25.7617, long: -80.1918, surface: Surface.HARD, startDate: new Date("2026-11-02"), endDate: new Date("2026-11-08"), drawSize: 32 },
+  { name: "Cali Open", tour: Tour.WTA, tier: "WTA_125", city: "Cali", country: "Colombia", countryCode: "CO", lat: 3.4516, long: -76.532, surface: Surface.CLAY, startDate: new Date("2026-11-02"), endDate: new Date("2026-11-08"), drawSize: 32 },
+];
+
+const tournaments: TournamentInput[] = [...events, ...restOfSeasonEvents, ...wta125Events].map(
+  (e) => ({ ...e, edition: SEASON }),
+);
 
 // ---------------------------------------------------------------------------
 // Rankings — a synthetic but plausible decreasing points curve (ranks 1..300)
