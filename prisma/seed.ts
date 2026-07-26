@@ -23,7 +23,7 @@ async function main() {
   // checkpoint the scraper will use. Bad data aborts before touching live tables.
   const ingest = await promoteIfValid(prisma, seedDataSource, {
     expectedSeason: SEASON,
-    expectedMonths: [7], // v1 scope: July 2026
+    expectedMonths: [7, 8, 9, 10, 11], // July sample + real Aug–Nov main-tour calendar
   });
   console.log(formatValidationReport(ingest.report));
   if (!ingest.promoted) {

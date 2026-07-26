@@ -25,12 +25,32 @@ describe("seedDataSource", () => {
     }
   });
 
-  it("all events start in July 2026", async () => {
+  it("all events start within the covered 2026 window (Jul–Nov)", async () => {
     const tournaments = await seedDataSource.tournaments();
+    const months = new Set<number>();
     for (const t of tournaments) {
       expect(t.startDate.getUTCFullYear()).toBe(2026);
-      expect(t.startDate.getUTCMonth()).toBe(6); // July (0-indexed)
+      const m = t.startDate.getUTCMonth(); // 0-indexed
+      expect(m).toBeGreaterThanOrEqual(6); // July
+      expect(m).toBeLessThanOrEqual(10); // November
+      months.add(m);
     }
+    // The real rest-of-season calendar extends past July.
+    expect([...months].some((m) => m > 6)).toBe(true);
+  });
+
+  it("includes the top-tier events (Grand Slam / 1000) mapped to categories", async () => {
+    const [categories, tournaments] = await Promise.all([
+      seedDataSource.categories(),
+      seedDataSource.tournaments(),
+    ]);
+    const tiers = new Set(tournaments.map((t) => t.tier));
+    expect(tiers.has("GRAND_SLAM")).toBe(true);
+    expect(tiers.has("ATP_1000")).toBe(true);
+    expect(tiers.has("WTA_1000")).toBe(true);
+    // Their categories exist (no orphans is covered above; assert points depth).
+    const slam = categories.find((c) => c.tier === "GRAND_SLAM");
+    expect(slam?.pointsByRound.W).toBe(2000);
   });
 
   it("produces a monotonically decreasing ranking points curve", async () => {

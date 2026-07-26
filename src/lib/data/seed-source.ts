@@ -29,6 +29,42 @@ const SEASON = 2026;
 const categories: CategoryInput[] = [
   {
     tour: Tour.ATP,
+    tier: "GRAND_SLAM",
+    season: SEASON,
+    pointsByRound: { W: 2000, F: 1300, SF: 780, QF: 430, R16: 240, R32: 130, R64: 70, R128: 10 },
+    prizeMoneyByRound: {
+      W: 3600000, F: 1800000, SF: 1000000, QF: 530000, R16: 313000, R32: 215000, R64: 140000, R128: 100000,
+    },
+    source: "curated",
+  },
+  {
+    tour: Tour.WTA,
+    tier: "GRAND_SLAM",
+    season: SEASON,
+    pointsByRound: { W: 2000, F: 1300, SF: 780, QF: 430, R16: 240, R32: 130, R64: 70, R128: 10 },
+    prizeMoneyByRound: {
+      W: 3600000, F: 1800000, SF: 1000000, QF: 530000, R16: 313000, R32: 215000, R64: 140000, R128: 100000,
+    },
+    source: "curated",
+  },
+  {
+    tour: Tour.ATP,
+    tier: "ATP_1000",
+    season: SEASON,
+    pointsByRound: { W: 1000, F: 600, SF: 360, QF: 180, R16: 90, R32: 45, R64: 25 },
+    prizeMoneyByRound: { W: 1000000, F: 545000, SF: 300000, QF: 165000, R16: 92000, R32: 50000, R64: 28000 },
+    source: "curated",
+  },
+  {
+    tour: Tour.WTA,
+    tier: "WTA_1000",
+    season: SEASON,
+    pointsByRound: { W: 1000, F: 650, SF: 390, QF: 215, R16: 120, R32: 65, R64: 35 },
+    prizeMoneyByRound: { W: 1000000, F: 545000, SF: 300000, QF: 165000, R16: 92000, R32: 50000, R64: 28000 },
+    source: "curated",
+  },
+  {
+    tour: Tour.ATP,
     tier: "ATP_500",
     season: SEASON,
     pointsByRound: { W: 500, F: 330, SF: 200, QF: 100, R16: 50, R32: 25 },
@@ -102,7 +138,9 @@ const categories: CategoryInput[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Tournaments — events starting in July 2026, across all four tours & 3 surfaces.
+// Tournaments — July 2026 sample (all four tours & 3 surfaces, WITH estimated
+// cutoffs) plus the real rest-of-season main-tour calendar (see
+// restOfSeasonEvents below).
 // ---------------------------------------------------------------------------
 
 type SeedEvent = Omit<TournamentInput, "edition"> & {
@@ -390,7 +428,56 @@ const events: SeedEvent[] = [
   },
 ];
 
-const tournaments: TournamentInput[] = events.map((e) => ({ ...e, edition: SEASON }));
+// Rest-of-2026 main-tour calendar (Aug–Nov), pulled from the 2026 ATP/WTA
+// Wikipedia tour pages. These carry NO cutoff — unlike the July sample above,
+// their entry cutoffs are left to the estimator (historical-anchored / tier
+// median), which is the honest state until a live entry-list feed lands. Names
+// that exist on both tours are suffixed (ATP)/(WTA) so the (name, edition) key
+// stays unique. Team/championship events (Davis & BJK Cup, Laver Cup, the
+// season-ending Finals) are intentionally excluded — they aren't open-draw
+// events a self-managed player enters. 125s/Challengers/ITF for this stretch
+// are not the full calendar yet (that's the paid-feed step).
+const restOfSeasonEvents: Omit<TournamentInput, "edition">[] = [
+  // ===== WTA =====
+  { name: "Canadian Open (WTA)", tour: Tour.WTA, tier: "WTA_1000", city: "Toronto", country: "Canada", countryCode: "CA", lat: 43.6532, long: -79.3832, surface: Surface.HARD, startDate: new Date("2026-08-03"), endDate: new Date("2026-08-09"), drawSize: 64 },
+  { name: "Cincinnati Open (WTA)", tour: Tour.WTA, tier: "WTA_1000", city: "Mason", country: "United States", countryCode: "US", lat: 39.3601, long: -84.3099, surface: Surface.HARD, startDate: new Date("2026-08-10"), endDate: new Date("2026-08-16"), drawSize: 64 },
+  { name: "Monterrey Open", tour: Tour.WTA, tier: "WTA_500", city: "Monterrey", country: "Mexico", countryCode: "MX", lat: 25.6866, long: -100.3161, surface: Surface.HARD, startDate: new Date("2026-08-24"), endDate: new Date("2026-08-30"), drawSize: 32 },
+  { name: "US Open (WTA)", tour: Tour.WTA, tier: "GRAND_SLAM", city: "New York", country: "United States", countryCode: "US", lat: 40.7498, long: -73.8467, surface: Surface.HARD, startDate: new Date("2026-08-31"), endDate: new Date("2026-09-13"), drawSize: 128 },
+  { name: "Guadalajara Open", tour: Tour.WTA, tier: "WTA_500", city: "Guadalajara", country: "Mexico", countryCode: "MX", lat: 20.6597, long: -103.3496, surface: Surface.HARD, startDate: new Date("2026-09-14"), endDate: new Date("2026-09-20"), drawSize: 32 },
+  { name: "SP Open", tour: Tour.WTA, tier: "WTA_250", city: "São Paulo", country: "Brazil", countryCode: "BR", lat: -23.5505, long: -46.6333, surface: Surface.HARD, startDate: new Date("2026-09-14"), endDate: new Date("2026-09-20"), drawSize: 28 },
+  { name: "Singapore Open", tour: Tour.WTA, tier: "WTA_500", city: "Singapore", country: "Singapore", countryCode: "SG", lat: 1.3521, long: 103.8198, surface: Surface.HARD, startDate: new Date("2026-09-21"), endDate: new Date("2026-09-27"), drawSize: 32 },
+  { name: "Korea Open", tour: Tour.WTA, tier: "WTA_250", city: "Seoul", country: "South Korea", countryCode: "KR", lat: 37.5665, long: 126.978, surface: Surface.HARD, startDate: new Date("2026-09-21"), endDate: new Date("2026-09-27"), drawSize: 28 },
+  { name: "China Open (WTA)", tour: Tour.WTA, tier: "WTA_1000", city: "Beijing", country: "China", countryCode: "CN", lat: 39.9042, long: 116.4074, surface: Surface.HARD, startDate: new Date("2026-09-28"), endDate: new Date("2026-10-04"), drawSize: 64 },
+  { name: "Wuhan Open", tour: Tour.WTA, tier: "WTA_1000", city: "Wuhan", country: "China", countryCode: "CN", lat: 30.5928, long: 114.3055, surface: Surface.HARD, startDate: new Date("2026-10-12"), endDate: new Date("2026-10-18"), drawSize: 64 },
+  { name: "Ningbo Open", tour: Tour.WTA, tier: "WTA_500", city: "Ningbo", country: "China", countryCode: "CN", lat: 29.8683, long: 121.544, surface: Surface.HARD, startDate: new Date("2026-10-19"), endDate: new Date("2026-10-25"), drawSize: 32 },
+  { name: "Japan Open (WTA)", tour: Tour.WTA, tier: "WTA_250", city: "Osaka", country: "Japan", countryCode: "JP", lat: 34.6937, long: 135.5023, surface: Surface.HARD, startDate: new Date("2026-10-19"), endDate: new Date("2026-10-25"), drawSize: 28 },
+  { name: "Pan Pacific Open", tour: Tour.WTA, tier: "WTA_500", city: "Tokyo", country: "Japan", countryCode: "JP", lat: 35.6762, long: 139.6503, surface: Surface.HARD, startDate: new Date("2026-10-26"), endDate: new Date("2026-11-01"), drawSize: 32 },
+  { name: "Guangzhou Open", tour: Tour.WTA, tier: "WTA_250", city: "Guangzhou", country: "China", countryCode: "CN", lat: 23.1291, long: 113.2644, surface: Surface.HARD, startDate: new Date("2026-10-26"), endDate: new Date("2026-11-01"), drawSize: 28 },
+  { name: "Hong Kong Open", tour: Tour.WTA, tier: "WTA_250", city: "Hong Kong", country: "China", countryCode: "HK", lat: 22.3193, long: 114.1694, surface: Surface.HARD, startDate: new Date("2026-11-02"), endDate: new Date("2026-11-08"), drawSize: 28 },
+  { name: "Chennai Open", tour: Tour.WTA, tier: "WTA_250", city: "Chennai", country: "India", countryCode: "IN", lat: 13.0827, long: 80.2707, surface: Surface.HARD, startDate: new Date("2026-11-02"), endDate: new Date("2026-11-08"), drawSize: 28 },
+  // ===== ATP =====
+  { name: "Canadian Open (ATP)", tour: Tour.ATP, tier: "ATP_1000", city: "Montreal", country: "Canada", countryCode: "CA", lat: 45.5019, long: -73.5674, surface: Surface.HARD, startDate: new Date("2026-08-03"), endDate: new Date("2026-08-09"), drawSize: 64 },
+  { name: "Cincinnati Open (ATP)", tour: Tour.ATP, tier: "ATP_1000", city: "Mason", country: "United States", countryCode: "US", lat: 39.3601, long: -84.3099, surface: Surface.HARD, startDate: new Date("2026-08-10"), endDate: new Date("2026-08-16"), drawSize: 64 },
+  { name: "Winston-Salem Open", tour: Tour.ATP, tier: "ATP_250", city: "Winston-Salem", country: "United States", countryCode: "US", lat: 36.0999, long: -80.2442, surface: Surface.HARD, startDate: new Date("2026-08-24"), endDate: new Date("2026-08-30"), drawSize: 28 },
+  { name: "US Open (ATP)", tour: Tour.ATP, tier: "GRAND_SLAM", city: "New York", country: "United States", countryCode: "US", lat: 40.7498, long: -73.8467, surface: Surface.HARD, startDate: new Date("2026-08-31"), endDate: new Date("2026-09-13"), drawSize: 128 },
+  { name: "Chengdu Open", tour: Tour.ATP, tier: "ATP_250", city: "Chengdu", country: "China", countryCode: "CN", lat: 30.5728, long: 104.0668, surface: Surface.HARD, startDate: new Date("2026-09-21"), endDate: new Date("2026-09-27"), drawSize: 28 },
+  { name: "Hangzhou Open", tour: Tour.ATP, tier: "ATP_250", city: "Hangzhou", country: "China", countryCode: "CN", lat: 30.2741, long: 120.1551, surface: Surface.HARD, startDate: new Date("2026-09-21"), endDate: new Date("2026-09-27"), drawSize: 28 },
+  { name: "China Open (ATP)", tour: Tour.ATP, tier: "ATP_500", city: "Beijing", country: "China", countryCode: "CN", lat: 39.9042, long: 116.4074, surface: Surface.HARD, startDate: new Date("2026-09-28"), endDate: new Date("2026-10-04"), drawSize: 32 },
+  { name: "Japan Open (ATP)", tour: Tour.ATP, tier: "ATP_500", city: "Tokyo", country: "Japan", countryCode: "JP", lat: 35.6762, long: 139.6503, surface: Surface.HARD, startDate: new Date("2026-09-28"), endDate: new Date("2026-10-04"), drawSize: 32 },
+  { name: "Shanghai Masters", tour: Tour.ATP, tier: "ATP_1000", city: "Shanghai", country: "China", countryCode: "CN", lat: 31.2304, long: 121.4737, surface: Surface.HARD, startDate: new Date("2026-10-05"), endDate: new Date("2026-10-11"), drawSize: 64 },
+  { name: "Almaty Open", tour: Tour.ATP, tier: "ATP_250", city: "Almaty", country: "Kazakhstan", countryCode: "KZ", lat: 43.222, long: 76.8512, surface: Surface.HARD, startDate: new Date("2026-10-19"), endDate: new Date("2026-10-25"), drawSize: 28 },
+  { name: "Grand Prix Auvergne-Rhône-Alpes", tour: Tour.ATP, tier: "ATP_250", city: "Lyon", country: "France", countryCode: "FR", lat: 45.764, long: 4.8357, surface: Surface.HARD, startDate: new Date("2026-10-19"), endDate: new Date("2026-10-25"), drawSize: 28 },
+  { name: "European Open", tour: Tour.ATP, tier: "ATP_250", city: "Brussels", country: "Belgium", countryCode: "BE", lat: 50.8503, long: 4.3517, surface: Surface.HARD, startDate: new Date("2026-10-19"), endDate: new Date("2026-10-25"), drawSize: 28 },
+  { name: "Swiss Indoors", tour: Tour.ATP, tier: "ATP_500", city: "Basel", country: "Switzerland", countryCode: "CH", lat: 47.5596, long: 7.5886, surface: Surface.HARD, startDate: new Date("2026-10-26"), endDate: new Date("2026-11-01"), drawSize: 32 },
+  { name: "Vienna Open", tour: Tour.ATP, tier: "ATP_500", city: "Vienna", country: "Austria", countryCode: "AT", lat: 48.2082, long: 16.3738, surface: Surface.HARD, startDate: new Date("2026-10-26"), endDate: new Date("2026-11-01"), drawSize: 32 },
+  { name: "Paris Masters", tour: Tour.ATP, tier: "ATP_1000", city: "Nanterre", country: "France", countryCode: "FR", lat: 48.8924, long: 2.2069, surface: Surface.HARD, startDate: new Date("2026-11-02"), endDate: new Date("2026-11-08"), drawSize: 64 },
+  { name: "Stockholm Open", tour: Tour.ATP, tier: "ATP_250", city: "Stockholm", country: "Sweden", countryCode: "SE", lat: 59.3293, long: 18.0686, surface: Surface.HARD, startDate: new Date("2026-11-09"), endDate: new Date("2026-11-15"), drawSize: 28 },
+];
+
+const tournaments: TournamentInput[] = [...events, ...restOfSeasonEvents].map((e) => ({
+  ...e,
+  edition: SEASON,
+}));
 
 // ---------------------------------------------------------------------------
 // Rankings — a synthetic but plausible decreasing points curve (ranks 1..300)
@@ -435,7 +522,7 @@ const rankings: RankingInput[] = [
 ];
 
 export const seedDataSource: DataSource = {
-  name: "curated-seed-2026-07",
+  name: "curated-seed-2026",
   async categories() {
     return categories;
   },
