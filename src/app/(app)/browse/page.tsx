@@ -131,8 +131,16 @@ export default async function BrowsePage({
         <button type="submit" className="h-9 rounded bg-black px-3 text-sm text-white">
           Update
         </button>
+        {/*
+          Clear is a true reset: show every event in the circuit for the default
+          date window. We pass an explicit empty `tour` so resolveBrowseTours
+          treats it as "All tours" (tourExplicit) rather than a fresh visit,
+          which would re-personalize back to just the player's own tours and can
+          collapse to almost nothing (e.g. a Challenger/ITF player whose only
+          in-window event is one lone Challenger).
+        */}
         <Link
-          href="/browse"
+          href="/browse?tour="
           className="flex h-9 items-center px-2 text-sm text-gray-500 underline"
         >
           Clear
