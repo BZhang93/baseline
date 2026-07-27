@@ -1,5 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { kmToMi, miToKm, formatMoney, formatTravelTime } from "./format";
+import { kmToMi, miToKm, formatMoney, formatTravelTime, formatTierLabel } from "./format";
+
+describe("formatTierLabel", () => {
+  it("combines tour + level into one label", () => {
+    expect(formatTierLabel("CHALLENGER_125")).toBe("Challenger 125");
+    expect(formatTierLabel("CHALLENGER_50")).toBe("Challenger 50");
+    expect(formatTierLabel("ATP_250")).toBe("ATP 250");
+    expect(formatTierLabel("WTA_1000")).toBe("WTA 1000");
+    expect(formatTierLabel("ITF_M25")).toBe("ITF M25");
+    expect(formatTierLabel("GRAND_SLAM")).toBe("Grand Slam");
+  });
+});
 
 describe("distance conversions", () => {
   it("round-trips km ↔ mi", () => {
