@@ -4,8 +4,38 @@ import {
   rankingTourFor,
   buildRankingLookup,
   resolveBrowseDates,
+  buildCutoffAndGap,
 } from "./tournaments";
 import { Tour } from "@/generated/prisma/client";
+
+const noPoints = () => null;
+
+describe("buildCutoffAndGap", () => {
+  const player = { ranking: 433, rankingTour: Tour.ATP } as const;
+
+  it("computes a rank gap for a Challenger even though it isn't the ranking tour (BRA-88)", () => {
+    // #433 vs a Challenger cutoff of #268 → out by rank, not "unknown".
+    const { gap } = buildCutoffAndGap(
+      Tour.CHALLENGER,
+      { liveCutoffRank: 268, historicalCutoffRank: null },
+      noPoints,
+      player,
+    );
+    expect(gap.status).toBe("out");
+    expect(gap.spots).toBe(433 - 268);
+  });
+
+  it("is 'unknown' only when there's no ranking or no cutoff", () => {
+    expect(
+      buildCutoffAndGap(Tour.ATP, { liveCutoffRank: 100, historicalCutoffRank: null }, noPoints, null)
+        .gap.status,
+    ).toBe("unknown");
+    expect(
+      buildCutoffAndGap(Tour.ATP, { liveCutoffRank: null, historicalCutoffRank: null }, noPoints, player)
+        .gap.status,
+    ).toBe("unknown");
+  });
+});
 
 describe("resolveBrowseDates", () => {
   const now = new Date("2026-07-14T09:00:00Z");

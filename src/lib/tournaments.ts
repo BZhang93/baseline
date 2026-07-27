@@ -1,6 +1,13 @@
 import { prisma } from "@/lib/prisma";
-import { Tour, Surface, Prisma, type Player } from "@/generated/prisma/client";
+import { Tour, Surface, Prisma, Circuit, type Player } from "@/generated/prisma/client";
 import { roundValue } from "@/lib/round-values";
+import { haversineKm, estimateTravel } from "@/lib/travel";
+import {
+  estimateCutoffs,
+  type CutoffBasis,
+  type CutoffEstimate,
+  type EventChange,
+} from "@/lib/cutoff-estimate";
 
 // ---------------------------------------------------------------------------
 // Pure helpers (unit-tested; no DB)
@@ -95,6 +102,10 @@ export interface TournamentView {
   liveCutoff: { rank: number | null; points: number | null };
   historicalCutoff: { rank: number | null; points: number | null };
   gap: GapView;
+  // How the (estimated) live cutoff was derived + a new/changed-event flag,
+  // so the UI can show confidence (BRA-107/108).
+  cutoffBasis: CutoffBasis;
+  change: EventChange | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -146,31 +157,129 @@ export async function getBrowseData(
     where.OR = [{ name: contains }, { city: contains }, { country: contains }];
   }
 
-  const [tournaments, pointsAt] = await Promise.all([
+  const [tournaments, pointsAt, estimates] = await Promise.all([
     prisma.tournament.findMany({
       where,
       include: { category: true, cutoff: true },
       orderBy: [{ startDate: "asc" }, { name: "asc" }],
     }),
     loadRankingLookup(),
+    // Estimates are computed over the full circuit calendar (not the filtered
+    // view) so the tier-typical fallback sees every same-tier event.
+    getCutoffEstimates(player?.circuit ?? null),
   ]);
 
-  return tournaments.map((t) => ({
-    id: t.id,
-    name: t.name,
-    tour: t.tour,
-    tier: t.tier,
-    city: t.city,
-    country: t.country,
-    surface: t.surface,
-    startDate: t.startDate,
-    endDate: t.endDate,
-    drawSize: t.drawSize,
-    winnerPoints: roundValue(t.category?.pointsByRound, "W"),
-    winnerPrize: roundValue(t.category?.prizeMoneyByRound, "W"),
-    currency: t.category?.currency ?? null,
-    ...buildCutoffAndGap(t.tour, t.cutoff, pointsAt, player),
-  }));
+  return tournaments.map((t) => {
+    const est = estimates.get(t.id);
+    return {
+      id: t.id,
+      name: t.name,
+      tour: t.tour,
+      tier: t.tier,
+      city: t.city,
+      country: t.country,
+      surface: t.surface,
+      startDate: t.startDate,
+      endDate: t.endDate,
+      drawSize: t.drawSize,
+      winnerPoints: roundValue(t.category?.pointsByRound, "W"),
+      winnerPrize: roundValue(t.category?.prizeMoneyByRound, "W"),
+      currency: t.category?.currency ?? null,
+      // Use the estimated live cutoff (basis-aware) in place of the raw stored one.
+      ...buildCutoffAndGap(
+        t.tour,
+        { liveCutoffRank: est?.rank ?? null, historicalCutoffRank: t.cutoff?.historicalCutoffRank ?? null },
+        pointsAt,
+        player,
+      ),
+      cutoffBasis: est?.basis ?? "estimated",
+      change: est?.change ?? null,
+    };
+  });
+}
+
+// Estimated live cutoff + basis + change flag for every event in a circuit,
+// keyed by tournament id (BRA-107). Loads the whole circuit calendar so the
+// tier-typical fallback is computed over all same-tier events.
+export async function getCutoffEstimates(
+  circuit: Circuit | null,
+): Promise<Map<string, CutoffEstimate>> {
+  const rows = await prisma.tournament.findMany({
+    where: circuit ? { circuit } : undefined,
+    select: { id: true, name: true, tier: true, cutoff: { select: { historicalCutoffRank: true } } },
+  });
+  return estimateCutoffs(
+    rows.map((r) => ({
+      key: r.id,
+      name: r.name,
+      tier: r.tier,
+      historicalRank: r.cutoff?.historicalCutoffRank ?? null,
+    })),
+  );
+}
+
+export interface CompareTournament extends TournamentView {
+  // Estimated travel from the player's home base to the event, if both are known.
+  travelFromHome: { minutes: number; cost: number } | null;
+}
+
+// Side-by-side comparison data for a set of events (BRA-64). Circuit-scoped,
+// preserves the requested order, and adds travel from the player's home base.
+export async function getCompareData(
+  ids: string[],
+  player:
+    | Pick<Player, "ranking" | "rankingTour" | "circuit" | "homeBaseLat" | "homeBaseLong">
+    | null,
+): Promise<CompareTournament[]> {
+  if (ids.length === 0) return [];
+  const [tournaments, pointsAt, estimates] = await Promise.all([
+    prisma.tournament.findMany({
+      where: { id: { in: ids }, ...(player?.circuit ? { circuit: player.circuit } : {}) },
+      include: { category: true, cutoff: true },
+    }),
+    loadRankingLookup(),
+    getCutoffEstimates(player?.circuit ?? null),
+  ]);
+  const home =
+    player?.homeBaseLat != null && player?.homeBaseLong != null
+      ? { lat: player.homeBaseLat, long: player.homeBaseLong }
+      : null;
+
+  const byId = new Map(tournaments.map((t) => [t.id, t]));
+  return ids
+    .map((id) => byId.get(id))
+    .filter((t): t is NonNullable<typeof t> => t != null)
+    .map((t) => {
+      const est = estimates.get(t.id);
+      const travel =
+        home && t.lat != null && t.long != null
+          ? estimateTravel(haversineKm(home, { lat: t.lat, long: t.long }))
+          : null;
+      return {
+        id: t.id,
+        name: t.name,
+        tour: t.tour,
+        tier: t.tier,
+        city: t.city,
+        country: t.country,
+        surface: t.surface,
+        startDate: t.startDate,
+        endDate: t.endDate,
+        drawSize: t.drawSize,
+        winnerPoints: roundValue(t.category?.pointsByRound, "W"),
+        winnerPrize: roundValue(t.category?.prizeMoneyByRound, "W"),
+        currency: t.category?.currency ?? null,
+        ...buildCutoffAndGap(
+          t.tour,
+          { liveCutoffRank: est?.rank ?? null, historicalCutoffRank: t.cutoff?.historicalCutoffRank ?? null },
+          pointsAt,
+          player,
+        ),
+        cutoffBasis: est?.basis ?? "estimated",
+        change: est?.change ?? null,
+        travelFromHome: travel ? { minutes: travel.durationMinutes, cost: travel.costEstimate } : null,
+      };
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -246,10 +355,15 @@ export function buildCutoffAndGap(
   const histRank = cutoff?.historicalCutoffRank ?? null;
   const liveCutoffPoints = rankTour ? pointsAt(rankTour, liveRank) : null;
 
-  const playerRank =
-    player?.ranking != null && player.rankingTour === tour ? player.ranking : null;
+  // The player's ranking is comparable to any event's cutoff on their own
+  // circuit — Challenger/ITF cutoffs are on the same ranking scale — so use it
+  // for the rank gap even when the event isn't the player's exact ranking tour
+  // (Browse/detail are circuit-scoped). This gives a consistent "X spots short"
+  // on every tier instead of an "unknown" for Challenger/ITF (BRA-88). Points
+  // exist only for ATP/WTA, so they stay tour-gated.
+  const playerRank = player?.ranking ?? null;
   const playerPoints =
-    playerRank != null && rankTour ? pointsAt(rankTour, playerRank) : null;
+    player?.rankingTour === tour && rankTour ? pointsAt(rankTour, playerRank) : null;
 
   return {
     liveCutoff: { rank: liveRank, points: liveCutoffPoints },

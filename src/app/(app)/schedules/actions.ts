@@ -9,8 +9,11 @@ import {
   renameSchedule,
   updateScheduleTripCosts,
   removeEventFromSchedule,
+  addEventToSchedule,
+  swapScheduleEvent,
   setScheduleLegMode,
   deleteSchedule,
+  duplicateSchedule,
   type CreateScheduleInput,
 } from "@/lib/schedules";
 import type { TransportMode } from "@/generated/prisma/enums";
@@ -78,6 +81,28 @@ export async function updateTripCostsAction(id: string, tripCosts: number): Prom
   revalidatePath("/schedules");
 }
 
+// Add one event to a saved schedule from its detail view (BRA-94).
+export async function addEventAction(scheduleId: string, tournamentId: string): Promise<void> {
+  const session = await getCurrentSession();
+  if (!session) return;
+  await addEventToSchedule(session.player.id, scheduleId, tournamentId);
+  revalidatePath(`/schedules/${scheduleId}`);
+  revalidatePath("/schedules");
+}
+
+// Swap a scheduled event for another in the same week (BRA-95).
+export async function swapEventAction(
+  scheduleId: string,
+  removeId: string,
+  addId: string,
+): Promise<void> {
+  const session = await getCurrentSession();
+  if (!session) return;
+  await swapScheduleEvent(session.player.id, scheduleId, removeId, addId);
+  revalidatePath(`/schedules/${scheduleId}`);
+  revalidatePath("/schedules");
+}
+
 // Bound as a form action: (id, tournamentId) with FormData appended + ignored.
 export async function removeEventAction(id: string, tournamentId: string): Promise<void> {
   const session = await getCurrentSession();
@@ -100,6 +125,15 @@ export async function setLegModeAction(
   await setScheduleLegMode(session.player.id, scheduleId, fromTournamentId, toTournamentId, mode);
   revalidatePath(`/schedules/${scheduleId}`);
   revalidatePath("/schedules");
+}
+
+// Clone a schedule and open the copy (BRA-98).
+export async function duplicateScheduleAction(id: string): Promise<void> {
+  const session = await getCurrentSession();
+  if (!session) return;
+  const newId = await duplicateSchedule(session.player.id, id);
+  revalidatePath("/schedules");
+  if (newId) redirect(`/schedules/${newId}`);
 }
 
 export async function deleteScheduleAction(id: string): Promise<void> {

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentSession } from "@/lib/player";
-import { getScheduleDetail, type ScheduleEventView } from "@/lib/schedules";
+import { getScheduleDetail, getScheduleCandidates, type ScheduleEventView } from "@/lib/schedules";
 import {
   formatDate,
   formatDateRange,
@@ -12,10 +12,14 @@ import {
 } from "@/lib/format";
 import { lodgingSearchUrl } from "@/lib/booking-links";
 import { GapBadge } from "../../_components/gap-badge";
+import { ChangeBadge } from "../../_components/change-badge";
 import { RenameName } from "../_components/rename-name";
 import { TripCosts } from "../_components/trip-costs";
 import { LegModeControl } from "../_components/leg-mode-control";
-import { removeEventAction, deleteScheduleAction } from "../actions";
+import { AddEvents } from "../_components/add-events";
+import { SwapEvent } from "../_components/swap-event";
+import { eventsOverlap } from "@/lib/schedule-path";
+import { removeEventAction, deleteScheduleAction, duplicateScheduleAction } from "../actions";
 
 const externalLink =
   "rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50";
@@ -28,12 +32,16 @@ function EventRow({
   e: ScheduleEventView;
 }) {
   return (
-    <div className={`rounded-lg border p-4 ${e.conflict ? "border-red-200 bg-red-50" : "border-gray-200"}`}>
+    <div className={`rounded-lg border p-4 ${e.conflict || e.circuitMismatch ? "border-red-200 bg-red-50" : "border-gray-200"}`}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="font-medium">{e.name}</h3>
           <p className="text-sm text-gray-500">
             {e.city}, {e.country} · {formatDateRange(e.startDate, e.endDate)}
+          </p>
+          <p className="mt-0.5 text-xs text-gray-400">
+            Depart {formatDate(e.departure.earliest)} (1st-round loss) –{" "}
+            {formatDate(e.departure.latest)} (win · {e.departure.rounds} rounds)
           </p>
           {e.qualiArrival && (
             <p className="mt-1 text-xs font-medium text-amber-700">
@@ -43,6 +51,11 @@ function EventRow({
           {e.conflict && (
             <p className="mt-1 text-xs font-medium text-red-700">
               Same-week conflict — not counted in totals
+            </p>
+          )}
+          {e.circuitMismatch && (
+            <p className="mt-1 text-xs font-medium text-red-700">
+              Not in your circuit — this event shouldn&apos;t be here; remove it.
             </p>
           )}
         </div>
@@ -66,8 +79,9 @@ function EventRow({
         <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">
           {formatSurface(e.surface)}
         </span>
+        <ChangeBadge change={e.change} />
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">
+      <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
         <div>
           <div className="text-gray-500">Winner</div>
           <div>{e.winnerPoints != null ? `${e.winnerPoints} pts` : "—"}</div>
@@ -77,18 +91,12 @@ function EventRow({
           <div>{formatMoney(e.winnerPrize, e.currency ?? undefined)}</div>
         </div>
         <div>
-          <div className="text-gray-500">Live Cutoff</div>
-          <div>
-            {e.cutoff.liveCutoff.rank != null ? `#${e.cutoff.liveCutoff.rank}` : "—"}
-            {e.cutoff.liveCutoff.points != null ? ` · ${e.cutoff.liveCutoff.points} pts` : ""}
+          <div className="text-gray-500" title="Estimated — based on last year's field; no live entry lists yet">
+            Est. Cutoff
           </div>
-        </div>
-        <div>
-          <div className="text-gray-500">Last Year</div>
           <div>
-            {e.cutoff.historicalCutoff.rank != null
-              ? `#${e.cutoff.historicalCutoff.rank}`
-              : "—"}
+            {e.cutoff.liveCutoff.rank != null ? `~#${e.cutoff.liveCutoff.rank}` : "—"}
+            {e.cutoff.liveCutoff.points != null ? ` · ${e.cutoff.liveCutoff.points} pts` : ""}
           </div>
         </div>
       </div>
@@ -118,6 +126,17 @@ export default async function ScheduleDetailPage({
   const schedule = await getScheduleDetail(session.player.id, id, session.player);
   if (!schedule) notFound();
 
+  // In-circuit candidate pool for adding (BRA-94) + per-week swapping (BRA-95).
+  const allCandidates = await getScheduleCandidates(session.player);
+  const byId = new Map(allCandidates.map((c) => [c.id, c]));
+  const existingIds = new Set(schedule.events.map((e) => e.tournamentId));
+  const addable = allCandidates.filter(
+    (c) =>
+      !existingIds.has(c.id) &&
+      (!schedule.startDate || c.endDate >= schedule.startDate) &&
+      (!schedule.endDate || c.startDate <= schedule.endDate),
+  );
+
   // Legs are keyed to the event they depart after, so they align even when
   // some events are same-week conflicts (excluded from the path).
   const legByAfter = new Map(schedule.legs.map((l) => [l.afterTournamentId, l]));
@@ -137,6 +156,14 @@ export default async function ScheduleDetailPage({
           >
             Edit
           </Link>
+          <form action={duplicateScheduleAction.bind(null, schedule.id)}>
+            <button
+              type="submit"
+              className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:border-gray-400"
+            >
+              Duplicate
+            </button>
+          </form>
           <form action={deleteScheduleAction.bind(null, schedule.id)}>
             <button
               type="submit"
@@ -160,6 +187,14 @@ export default async function ScheduleDetailPage({
           {schedule.conflictCount} event{schedule.conflictCount > 1 ? "s" : ""} overlap the same week
           as another — a player can only play one at a time, so they&apos;re flagged below and
           excluded from the totals. Remove them to resolve.
+        </p>
+      )}
+
+      {schedule.circuitMismatchCount > 0 && (
+        <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {schedule.circuitMismatchCount} event{schedule.circuitMismatchCount > 1 ? "s" : ""} aren&apos;t
+          in your circuit (from before circuit scoping) — flagged below and excluded from the totals.
+          Remove them to clean up this schedule.
         </p>
       )}
 
@@ -210,15 +245,27 @@ export default async function ScheduleDetailPage({
         <ol className="mt-6 flex flex-col gap-4">
           {schedule.events.map((e) => {
             const leg = legByAfter.get(e.tournamentId);
+            const current = byId.get(e.tournamentId);
+            // This week's alternatives: same-week, in-circuit, not already added.
+            const alternatives = current
+              ? allCandidates.filter(
+                  (c) => c.id !== current.id && !existingIds.has(c.id) && eventsOverlap(c, current),
+                )
+              : [];
             return (
               <li key={e.tournamentId} className="flex flex-col gap-3">
                 <EventRow scheduleId={schedule.id} e={e} />
+                {current && (
+                  <SwapEvent scheduleId={schedule.id} current={current} alternatives={alternatives} />
+                )}
                 {leg && <LegModeControl scheduleId={schedule.id} leg={leg} />}
               </li>
             );
           })}
         </ol>
       )}
+
+      <AddEvents scheduleId={schedule.id} candidates={addable} />
     </div>
   );
 }

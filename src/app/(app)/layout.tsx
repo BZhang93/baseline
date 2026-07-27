@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getCurrentSession } from "@/lib/player";
 import { logout } from "@/app/login/actions";
 import { AppNav } from "./_components/app-nav";
+import { MobileNav } from "./_components/mobile-nav";
 
 // Shared layout for all authenticated app routes. The proxy already redirects
 // unauthenticated users to /login; we re-check here and use the session to
@@ -26,7 +27,7 @@ export default async function AppLayout({
           <div className="ml-auto flex items-center gap-3">
             <Link
               href="/schedules/new"
-              className="rounded bg-black px-3 py-1.5 text-sm text-white"
+              className="hidden rounded bg-black px-3 py-1.5 text-sm text-white sm:inline-block"
             >
               Create Schedule
             </Link>
@@ -45,9 +46,11 @@ export default async function AppLayout({
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 pt-8 pb-24 sm:pb-8">
         {children}
       </main>
+
+      <MobileNav />
     </div>
   );
 }

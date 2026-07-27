@@ -4,19 +4,21 @@ import type { Tour, Surface, Player } from "@/generated/prisma/client";
 import {
   loadRankingLookup,
   buildCutoffAndGap,
+  getCutoffEstimates,
   rankingTourFor,
   computeGap,
   type CutoffAndGap,
   type AcceptanceStatus,
 } from "@/lib/tournaments";
+import type { CutoffBasis, EventChange } from "@/lib/cutoff-estimate";
 import { roundValue } from "@/lib/round-values";
-import { resolvePlayedPath, eventsDateRange } from "@/lib/schedule-path";
+import { resolvePlayedPath, eventsDateRange, eventsOverlap } from "@/lib/schedule-path";
 import { eventExpectedValue, type CandidateEvent } from "@/lib/optimizer";
 import {
   routeLeg,
   legKey,
   parseLegModeOverrides,
-  transportPriorityFromWeightPoints,
+  transportPriorityFromWeights,
   modeFeasible,
   type LegRouting,
   type LegAlternative,
@@ -25,6 +27,8 @@ import {
 } from "@/lib/transport";
 import type { TransportMode } from "@/generated/prisma/enums";
 import { arrivalDate, isQualiArrival } from "@/lib/quali";
+import { departureWindow, type DepartureWindow } from "@/lib/departure";
+import { toUsd } from "@/lib/currency";
 
 // A player's applicable rank/cutoff for one event, as the optimizer's
 // round-reached model expects. Shared by the Browse candidate loader and the
@@ -36,7 +40,7 @@ type ScorableTournament = {
   endDate: Date;
   lat: number | null;
   long: number | null;
-  category: { pointsByRound: unknown; prizeMoneyByRound: unknown } | null;
+  category: { pointsByRound: unknown; prizeMoneyByRound: unknown; currency: string } | null;
   cutoff: { liveCutoffRank: number | null } | null;
 };
 
@@ -75,7 +79,9 @@ export function expectedScheduleTotals(
   for (const t of path) {
     const v = eventExpectedValue(toCandidate(t, player));
     points += v.expectedPoints;
-    prize += v.expectedPrize;
+    // Convert each event's prize to USD so a EUR (ITF) event and a USD event
+    // sum in one currency for net-of-cost math (player-feedback P2-13).
+    prize += toUsd(v.expectedPrize, t.category?.currency ?? "USD");
   }
   return { expectedPoints: Math.round(points), expectedPrize: Math.round(prize) };
 }
@@ -253,12 +259,12 @@ export function buildLegsAndScores(events: LegEvent[], opts: RouteOptions = DEFA
 // prefs, the priority derived from the schedule's weighting, and any saved
 // per-leg overrides.
 function routeOptionsFor(
-  schedule: { weightPoints: number; legModeOverrides: unknown },
+  schedule: { weightTravelTime: number; weightTravelCost: number; legModeOverrides: unknown },
   prefs: TransportMode[],
 ): RouteOptions {
   return {
     prefs,
-    priority: transportPriorityFromWeightPoints(schedule.weightPoints),
+    priority: transportPriorityFromWeights(schedule.weightTravelTime, schedule.weightTravelCost),
     overrides: parseLegModeOverrides(schedule.legModeOverrides),
   };
 }
@@ -273,13 +279,16 @@ function overridesForStorage(
     : Prisma.DbNull;
 }
 
-// The player's ranked transport preferences, for routing this schedule's legs.
-async function transportPrefsFor(playerId: string): Promise<TransportMode[]> {
+// The player's circuit (for eligibility scoping) + ranked transport preferences
+// (for routing this schedule's legs).
+async function playerContext(
+  playerId: string,
+): Promise<{ circuit: Player["circuit"]; transportModes: TransportMode[] }> {
   const player = await prisma.player.findUnique({
     where: { id: playerId },
-    select: { transportModes: true },
+    select: { circuit: true, transportModes: true },
   });
-  return player?.transportModes ?? [];
+  return { circuit: player?.circuit ?? null, transportModes: player?.transportModes ?? [] };
 }
 
 function byStartDate<T extends { startDate: Date }>(a: T, b: T): number {
@@ -292,15 +301,17 @@ export async function createSchedule(
   playerId: string,
   input: CreateScheduleInput,
 ): Promise<string> {
+  // Circuit eligibility (BRA-75): a men's player can't add women's events and
+  // vice-versa. Filter server-side so a crafted save can't slip past the picker.
+  const { circuit, transportModes: prefs } = await playerContext(playerId);
   const selected = await prisma.tournament.findMany({
-    where: { id: { in: input.tournamentIds } },
+    where: { id: { in: input.tournamentIds }, ...(circuit ? { circuit } : {}) },
     include: { category: true },
   });
   const events = [...selected].sort(byStartDate);
-  const prefs = await transportPrefsFor(playerId);
   const built = buildLegsAndScores(events, {
     prefs,
-    priority: transportPriorityFromWeightPoints(input.weightPoints),
+    priority: transportPriorityFromWeights(input.weightTravelTime, input.weightTravelCost),
     overrides: {},
   });
 
@@ -338,14 +349,19 @@ export interface ScheduleEditData {
   maxEvents: string;
   minRestDays: string;
   tripCosts: string;
-  priority: number;
+  restPriority: number;
+  costPriority: number;
   eventIds: string[];
 }
 
 const toDateStr = (d: Date | null): string => (d ? d.toISOString().slice(0, 10) : "");
 
-// Pre-fill values for editing a schedule in the create form. Priority is
-// reverse-derived from the stored weights (weightPoints = 0.5 + 1.5·p).
+// Pre-fill values for editing a schedule in the create form. The rest/cost
+// priorities are reverse-derived from the stored travel weights
+// (weightTravel* = 0.5 + 3·(priority/100)).
+const priorityFromWeight = (w: number): number =>
+  Math.max(0, Math.min(100, Math.round(((w - 0.5) / 3) * 100)));
+
 export async function getScheduleForEdit(
   playerId: string,
   id: string,
@@ -355,7 +371,6 @@ export async function getScheduleForEdit(
     include: { items: { orderBy: { order: "asc" } } },
   });
   if (!s) return null;
-  const priority = Math.max(0, Math.min(100, Math.round(((s.weightPoints - 0.5) / 1.5) * 100)));
   return {
     name: s.name,
     from: toDateStr(s.startDate),
@@ -364,7 +379,8 @@ export async function getScheduleForEdit(
     maxEvents: s.maxEvents?.toString() ?? "",
     minRestDays: s.minRestDays?.toString() ?? "",
     tripCosts: s.tripCosts ? s.tripCosts.toString() : "",
-    priority,
+    restPriority: priorityFromWeight(s.weightTravelTime),
+    costPriority: priorityFromWeight(s.weightTravelCost),
     eventIds: s.items.map((i) => i.tournamentId),
   };
 }
@@ -378,12 +394,18 @@ export async function updateSchedule(
 ): Promise<boolean> {
   const owned = await prisma.schedule.findFirst({
     where: { id, playerId },
-    select: { id: true, legModeOverrides: true, player: { select: { transportModes: true } } },
+    select: {
+      id: true,
+      legModeOverrides: true,
+      player: { select: { circuit: true, transportModes: true } },
+    },
   });
   if (!owned) return false;
 
+  // Circuit eligibility (BRA-75): drop any out-of-circuit ids server-side.
+  const circuit = owned.player.circuit;
   const selected = await prisma.tournament.findMany({
-    where: { id: { in: input.tournamentIds } },
+    where: { id: { in: input.tournamentIds }, ...(circuit ? { circuit } : {}) },
     include: { category: true },
   });
   const events = [...selected].sort(byStartDate);
@@ -391,7 +413,7 @@ export async function updateSchedule(
   // prunes any that no longer match a leg (removed events / new distances).
   const built = buildLegsAndScores(events, {
     prefs: owned.player.transportModes,
-    priority: transportPriorityFromWeightPoints(input.weightPoints),
+    priority: transportPriorityFromWeights(input.weightTravelTime, input.weightTravelCost),
     overrides: parseLegModeOverrides(owned.legModeOverrides),
   });
 
@@ -537,14 +559,24 @@ export interface ScheduleEventView {
   winnerPrize: number | null;
   currency: string | null;
   cutoff: CutoffAndGap;
+  // How the (estimated) live cutoff was derived + a new/changed-event flag,
+  // so the UI can show confidence (BRA-107/108).
+  cutoffBasis: CutoffBasis;
+  change: EventChange | null;
   // True when this event collides with an earlier same-week event, so it's
   // excluded from totals and the travel path (player-feedback P0-1).
   conflict: boolean;
+  // True when the event isn't in the player's circuit (a stale item that
+  // predates circuit scoping) — flagged, not silently counted (BRA-75).
+  circuitMismatch: boolean;
   // When the player enters qualifying (Challenger/ITF, below the cut), the date
   // they actually arrive — the quali sign-in, earlier than main-draw start.
   arrivalDate: Date;
   // True when arrivalDate is a qualifying arrival (before main-draw start).
   qualiArrival: boolean;
+  // Draw-dependent departure window: earliest (first-round loss) → latest (win
+  // the final), so a player doesn't book a flight they can't use (P1-5).
+  departure: DepartureWindow;
 }
 
 export interface TravelLegView {
@@ -590,12 +622,14 @@ export interface ScheduleDetail {
   };
   // How many events collide with the played path (0 = clean schedule).
   conflictCount: number;
+  // How many events aren't in the player's circuit (stale items to remove).
+  circuitMismatchCount: number;
 }
 
 export async function getScheduleDetail(
   playerId: string,
   id: string,
-  player: Pick<Player, "ranking" | "rankingTour" | "transportModes"> | null,
+  player: Pick<Player, "ranking" | "rankingTour" | "transportModes" | "circuit"> | null,
 ): Promise<ScheduleDetail | null> {
   const schedule = await prisma.schedule.findFirst({
     where: { id, playerId },
@@ -605,23 +639,38 @@ export async function getScheduleDetail(
   });
   if (!schedule) return null;
 
-  const pointsAt = await loadRankingLookup();
+  const [pointsAt, estimates] = await Promise.all([
+    loadRankingLookup(),
+    getCutoffEstimates(player?.circuit ?? null),
+  ]);
   const tournaments = schedule.items.map((i) => i.tournament);
+  // Out-of-circuit items (predating circuit scoping) are flagged AND excluded
+  // from the path/totals — never silently counted (BRA-75).
+  const inCircuit = (t: (typeof tournaments)[number]) =>
+    player?.circuit == null || t.circuit === player.circuit;
+  const eligible = tournaments.filter(inCircuit);
 
   // Resolve the played path so we can flag same-week conflicts and recompute
   // totals/legs over the real path — never trusting persisted totals, which may
   // predate this fix (player-feedback P0-1).
-  const { path, conflicts } = resolvePlayedPath(tournaments);
+  const { path, conflicts } = resolvePlayedPath(eligible);
   const conflictIds = new Set(conflicts.map((t) => t.id));
 
   const events: ScheduleEventView[] = [...tournaments].sort(byStartDate).map((t) => {
-    const cutoff = buildCutoffAndGap(t.tour, t.cutoff, pointsAt, player);
+    const est = estimates.get(t.id);
+    const estRank = est?.rank ?? null;
+    const cutoff = buildCutoffAndGap(
+      t.tour,
+      { liveCutoffRank: estRank, historicalCutoffRank: t.cutoff?.historicalCutoffRank ?? null },
+      pointsAt,
+      player,
+    );
     const qt = { tour: t.tour, startDate: t.startDate, qualiStartDate: t.qualiStartDate };
     // Quali entry is a direct rank-vs-cutoff check: Challenger/ITF acceptance is
     // always "unknown" (no points model), so we compare the player's ranking to
-    // the event's live cutoff rank (same circuit scale).
+    // the event's (estimated) live cutoff rank (same circuit scale).
     const rank = player?.ranking ?? null;
-    const cutoffRank = t.cutoff?.liveCutoffRank ?? null;
+    const cutoffRank = estRank;
     return {
       tournamentId: t.id,
       name: t.name,
@@ -636,15 +685,19 @@ export async function getScheduleDetail(
       winnerPrize: roundValue(t.category?.prizeMoneyByRound, "W"),
       currency: t.category?.currency ?? null,
       cutoff,
+      cutoffBasis: est?.basis ?? "estimated",
+      change: est?.change ?? null,
       conflict: conflictIds.has(t.id),
+      circuitMismatch: player?.circuit != null && t.circuit !== player.circuit,
       // Quali entrants (Challenger/ITF, below the cut) arrive for the weekend
       // qualifying, earlier than main-draw Monday (player-feedback P1-6).
       arrivalDate: arrivalDate(qt, rank, cutoffRank),
       qualiArrival: isQualiArrival(qt, rank, cutoffRank),
+      departure: departureWindow(t.startDate, t.endDate, t.drawSize),
     };
   });
 
-  const built = buildLegsAndScores(tournaments, routeOptionsFor(schedule, player?.transportModes ?? []));
+  const built = buildLegsAndScores(eligible, routeOptionsFor(schedule, player?.transportModes ?? []));
   // built.legs[i] departs after path[i] to path[i + 1] (both derive from the
   // same played path), so routings[i] and the tournament pair align by index.
   // activeOverrides is the pruned set that actually applied (stale/infeasible
@@ -666,15 +719,15 @@ export async function getScheduleDetail(
     };
   });
 
-  const { expectedPoints, expectedPrize } = expectedScheduleTotals(tournaments, player);
+  const { expectedPoints, expectedPrize } = expectedScheduleTotals(eligible, player);
   const netEarnings = expectedPrize - built.scoreTravelCost - schedule.tripCosts;
-  const range = eventsDateRange(tournaments);
+  const range = eventsDateRange(eligible);
   // The trip begins at the earliest arrival — a quali entrant's first event
   // pulls the window a couple days before main-draw Monday (player-feedback P1-6).
-  const earliestArrival = events.reduce<Date | null>(
-    (min, e) => (min == null || e.arrivalDate < min ? e.arrivalDate : min),
-    null,
-  );
+  const earliestArrival = events.reduce<Date | null>((min, e) => {
+    if (e.circuitMismatch) return min; // excluded event doesn't move the window
+    return min == null || e.arrivalDate < min ? e.arrivalDate : min;
+  }, null);
 
   return {
     id: schedule.id,
@@ -695,6 +748,7 @@ export async function getScheduleDetail(
       netEarnings,
     },
     conflictCount: built.conflictCount,
+    circuitMismatchCount: events.filter((e) => e.circuitMismatch).length,
   };
 }
 
@@ -705,7 +759,8 @@ export async function recomputeScheduleTotals(scheduleId: string): Promise<void>
   const schedule = await prisma.schedule.findUnique({
     where: { id: scheduleId },
     select: {
-      weightPoints: true,
+      weightTravelTime: true,
+      weightTravelCost: true,
       legModeOverrides: true,
       player: { select: { transportModes: true } },
       items: { include: { tournament: { include: { category: true } } } },
@@ -823,7 +878,119 @@ export async function removeEventFromSchedule(
   return true;
 }
 
+// Adds one event to a saved schedule, then recomputes totals/legs (BRA-94).
+// Circuit-checked (a men's player can't add a women's event, BRA-75) and a
+// no-op if the event is already in the schedule.
+export async function addEventToSchedule(
+  playerId: string,
+  scheduleId: string,
+  tournamentId: string,
+): Promise<boolean> {
+  const owned = await prisma.schedule.findFirst({
+    where: { id: scheduleId, playerId },
+    select: {
+      id: true,
+      player: { select: { circuit: true } },
+      items: { select: { tournamentId: true } },
+    },
+  });
+  if (!owned) return false;
+
+  // The event must exist and be in the player's circuit.
+  const circuit = owned.player.circuit;
+  const eligible = await prisma.tournament.findFirst({
+    where: { id: tournamentId, ...(circuit ? { circuit } : {}) },
+    select: { id: true },
+  });
+  if (!eligible) return false;
+
+  if (owned.items.some((i) => i.tournamentId === tournamentId)) return true; // already in
+  await prisma.scheduleItem.create({
+    data: { scheduleId, tournamentId, order: owned.items.length },
+  });
+  await recomputeScheduleTotals(scheduleId);
+  return true;
+}
+
+// Per-week swap (BRA-95): replace one scheduled event with another in the SAME
+// week (the one-per-week edit). Ownership + circuit checked; the replacement
+// must overlap the removed event's week and not already be in the schedule.
+export async function swapScheduleEvent(
+  playerId: string,
+  scheduleId: string,
+  removeId: string,
+  addId: string,
+): Promise<boolean> {
+  if (removeId === addId) return false;
+  const owned = await prisma.schedule.findFirst({
+    where: { id: scheduleId, playerId },
+    select: {
+      id: true,
+      player: { select: { circuit: true } },
+      items: { select: { tournamentId: true } },
+    },
+  });
+  if (!owned) return false;
+  if (!owned.items.some((i) => i.tournamentId === removeId)) return false; // not in schedule
+  if (owned.items.some((i) => i.tournamentId === addId)) return false; // target already in
+
+  const circuit = owned.player.circuit;
+  const [rem, add] = await Promise.all([
+    prisma.tournament.findUnique({ where: { id: removeId }, select: { startDate: true, endDate: true } }),
+    prisma.tournament.findFirst({
+      where: { id: addId, ...(circuit ? { circuit } : {}) },
+      select: { startDate: true, endDate: true },
+    }),
+  ]);
+  if (!rem || !add) return false;
+  if (!eventsOverlap(rem, add)) return false; // must be the same week
+
+  await prisma.$transaction([
+    prisma.scheduleItem.deleteMany({ where: { scheduleId, tournamentId: removeId } }),
+    prisma.scheduleItem.create({ data: { scheduleId, tournamentId: addId, order: owned.items.length } }),
+  ]);
+  await recomputeScheduleTotals(scheduleId);
+  return true;
+}
+
 export async function deleteSchedule(playerId: string, id: string): Promise<boolean> {
   const res = await prisma.schedule.deleteMany({ where: { id, playerId } });
   return res.count > 0;
+}
+
+// Clone a schedule so a player can explore an alternative without rebuilding
+// (BRA-98). Copies events + all settings + per-leg overrides under a "(copy)"
+// name. Returns the new schedule id, or null if not owned.
+export async function duplicateSchedule(playerId: string, id: string): Promise<string | null> {
+  const s = await prisma.schedule.findFirst({
+    where: { id, playerId },
+    include: { items: { select: { tournamentId: true, order: true } } },
+  });
+  if (!s) return null;
+
+  const created = await prisma.schedule.create({
+    data: {
+      playerId,
+      name: `${s.name} (copy)`,
+      startDate: s.startDate,
+      endDate: s.endDate,
+      budgetCap: s.budgetCap,
+      maxEvents: s.maxEvents,
+      minRestDays: s.minRestDays,
+      tripCosts: s.tripCosts,
+      weightPoints: s.weightPoints,
+      weightMoney: s.weightMoney,
+      weightTravelTime: s.weightTravelTime,
+      weightTravelCost: s.weightTravelCost,
+      scorePoints: s.scorePoints,
+      scorePrizeMoney: s.scorePrizeMoney,
+      scoreTravelTimeMin: s.scoreTravelTimeMin,
+      scoreTravelCost: s.scoreTravelCost,
+      legModeOverrides: s.legModeOverrides ?? Prisma.DbNull,
+      items: { create: s.items.map((i) => ({ tournamentId: i.tournamentId, order: i.order })) },
+    },
+  });
+  // Rebuild legs so the copy has its own travel rows (totals recompute on read).
+  await recomputeScheduleTotals(created.id);
+  return created.id;
 }

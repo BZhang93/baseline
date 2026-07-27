@@ -20,7 +20,7 @@ import {
   formatTransportMode,
 } from "@/lib/format";
 import { haversineKm } from "@/lib/travel";
-import { routeLeg, transportPriorityFromWeightPoints, type LegRouting } from "@/lib/transport";
+import { routeLeg, transportPriorityFromWeights, type LegRouting } from "@/lib/transport";
 import { resolvePlayedPath, conflictsWith } from "@/lib/schedule-path";
 import { transportSearchUrl, lodgingSearchUrl } from "@/lib/booking-links";
 import {
@@ -31,19 +31,22 @@ import {
 } from "@/lib/picker-filter";
 import { createScheduleAction, updateScheduleAction } from "../actions";
 
-// Priority slider (0 = protect body/cost, 100 = maximize points) → objective
-// weights. One source of truth for both the optimizer and the saved schedule.
-function optimizerWeights(priority: number): OptimizerWeights {
-  const p = priority / 100;
+// Two independent priorities (0 = don't care … 100 = top priority):
+//   restPriority → how much to penalize travel TIME (protect the body / rest)
+//   costPriority → how much to penalize travel COST (save money)
+// Points/prize sit at a fixed baseline; raising a priority makes the optimizer
+// trade some points away to cut that kind of travel. One source of truth for
+// both the optimizer preview and the saved schedule's weights.
+function optimizerWeights(restPriority: number, costPriority: number): OptimizerWeights {
   return {
-    points: 0.5 + 1.5 * p,
-    money: 0.5 + 1.5 * p,
-    travelTime: 2 - 1.5 * p,
-    travelCost: 2 - 1.5 * p,
+    points: 1,
+    money: 1,
+    travelTime: 0.5 + (restPriority / 100) * 3,
+    travelCost: 0.5 + (costPriority / 100) * 3,
   };
 }
-function weightsFromPriority(priority: number) {
-  const w = optimizerWeights(priority);
+function scheduleWeights(restPriority: number, costPriority: number) {
+  const w = optimizerWeights(restPriority, costPriority);
   return {
     weightPoints: w.points,
     weightMoney: w.money,
@@ -57,6 +60,10 @@ function numberOrUndefined(v: string): number | undefined {
   const n = Number(v);
   return Number.isFinite(n) ? n : undefined;
 }
+
+// New schedules default their window to the end of the current year, so it
+// covers the rest of the season out of the box (mirrors Browse).
+const DEFAULT_TO = `${new Date().getUTCFullYear()}-12-31`;
 
 const ACCEPTANCE: Record<AcceptanceStatus, { label: string; className: string } | null> = {
   in: { label: "In", className: "bg-green-100 text-green-700" },
@@ -73,7 +80,8 @@ export interface ScheduleFormInitial {
   maxEvents?: string;
   minRestDays?: string;
   tripCosts?: string;
-  priority?: number;
+  restPriority?: number;
+  costPriority?: number;
 }
 
 const TRANSPORT_ICON: Record<TransportMode, string> = {
@@ -101,12 +109,13 @@ export function CreateScheduleForm({
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [from, setFrom] = useState(initial?.from ?? "");
-  const [to, setTo] = useState(initial?.to ?? "");
+  const [to, setTo] = useState(initial?.to ?? DEFAULT_TO);
   const [budgetCap, setBudgetCap] = useState(initial?.budgetCap ?? "");
   const [maxEvents, setMaxEvents] = useState(initial?.maxEvents ?? "");
   const [minRestDays, setMinRestDays] = useState(initial?.minRestDays ?? "");
   const [tripCosts, setTripCosts] = useState(initial?.tripCosts ?? "");
-  const [priority, setPriority] = useState(initial?.priority ?? 50);
+  const [restPriority, setRestPriority] = useState(initial?.restPriority ?? 50);
+  const [costPriority, setCostPriority] = useState(initial?.costPriority ?? 50);
   const [selectedIds, setSelectedIds] = useState<string[]>(initialSelectedIds);
   const [error, setError] = useState<string | null>(null);
   const [suggestion, setSuggestion] = useState<string | null>(null);
@@ -127,12 +136,12 @@ export function CreateScheduleForm({
   const conflictIds = useMemo(() => new Set(conflicts.map((t) => t.id)), [conflicts]);
   const totals = useMemo(() => scheduleTotals(path), [path]);
 
-  // The Priority slider steers mode choice the same way it sets the saved
+  // Rest vs cost priority steers mode choice the same way it sets the saved
   // schedule's weights, so the preview matches what the server will route.
-  const routePriority = useMemo(
-    () => transportPriorityFromWeightPoints(optimizerWeights(priority).points),
-    [priority],
-  );
+  const routePriority = useMemo(() => {
+    const w = optimizerWeights(restPriority, costPriority);
+    return transportPriorityFromWeights(w.travelTime, w.travelCost);
+  }, [restPriority, costPriority]);
 
   // Multi-modal per-leg routing over the played path (player-feedback P1-7): a
   // recommended mode + alternatives per hop, mirroring buildLegsAndScores.
@@ -172,7 +181,18 @@ export function CreateScheduleForm({
     return { minutes, cost };
   }, [legs]);
 
-  const [filters, setFilters] = useState<PickerFilters>(EMPTY_PICKER_FILTERS);
+  // The picker's date range tracks the schedule window, so the events on the
+  // right end where the "To" date does.
+  const [filters, setFilters] = useState<PickerFilters>({
+    ...EMPTY_PICKER_FILTERS,
+    to: initial?.to ?? DEFAULT_TO,
+  });
+
+  // Keep the schedule "To" and the picker's "to" filter in sync.
+  function handleToChange(value: string) {
+    setTo(value);
+    setFilters((f) => ({ ...f, to: value }));
+  }
 
   const options = useMemo(() => pickerOptions(candidates), [candidates]);
   const available = useMemo(
@@ -211,7 +231,7 @@ export function CreateScheduleForm({
     const inWindow = candidates.filter(
       (c) => (!fromD || c.endDate >= fromD) && (!toD || c.startDate <= toD),
     );
-    const result = optimizeSchedule(inWindow, optimizerWeights(priority), {
+    const result = optimizeSchedule(inWindow, optimizerWeights(restPriority, costPriority), {
       maxEvents: numberOrUndefined(maxEvents),
       minRestDays: numberOrUndefined(minRestDays),
       budgetCap: numberOrUndefined(budgetCap),
@@ -238,7 +258,7 @@ export function CreateScheduleForm({
       maxEvents: numberOrUndefined(maxEvents),
       minRestDays: numberOrUndefined(minRestDays),
       tripCosts: numberOrUndefined(tripCosts),
-      ...weightsFromPriority(priority),
+      ...scheduleWeights(restPriority, costPriority),
       tournamentIds: selectedIds,
     };
     startTransition(async () => {
@@ -273,7 +293,7 @@ export function CreateScheduleForm({
           </label>
           <label className={label}>
             To
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={field} />
+            <input type="date" value={to} onChange={(e) => handleToChange(e.target.value)} className={field} />
           </label>
         </div>
 
@@ -311,6 +331,11 @@ export function CreateScheduleForm({
           </label>
         </div>
 
+        <p className="-mt-2 text-xs text-gray-400">
+          <span className="font-medium text-gray-500">Budget Cap</span> is a ceiling —
+          &ldquo;Suggest&rdquo; won&apos;t propose a swing whose estimated travel cost exceeds it.
+        </p>
+
         <label className={label}>
           Trip Costs (lodging, food, etc.)
           <input
@@ -322,37 +347,44 @@ export function CreateScheduleForm({
             className={field}
           />
           <span className="text-xs text-gray-400">
-            Subtracted (with estimated travel) from expected prize for net earnings.
+            Your actual out-of-pocket (not a limit) — subtracted with estimated travel from
+            expected prize for net earnings.
           </span>
         </label>
 
-        <div className={label}>
-          <div className="flex justify-between">
-            <span>Priority</span>
-            <span className="text-gray-500">
-              {priority >= 60 ? "Maximize points" : priority <= 40 ? "Protect body / cost" : "Balanced"}
-            </span>
+        <div className="flex flex-col gap-3">
+          <span className="text-sm">Priorities</span>
+          <div className={label}>
+            <div className="flex justify-between text-xs">
+              <span>Protect body (rest / less travel)</span>
+              <span className="text-gray-500">{restPriority}</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={restPriority}
+              onChange={(e) => setRestPriority(Number(e.target.value))}
+            />
           </div>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={priority}
-            onChange={(e) => setPriority(Number(e.target.value))}
-          />
-          <div className="flex justify-between text-xs text-gray-400">
-            <span>Protect body / cost</span>
-            <span>Maximize points</span>
+          <div className={label}>
+            <div className="flex justify-between text-xs">
+              <span>Save on cost (cheaper travel)</span>
+              <span className="text-gray-500">{costPriority}</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={costPriority}
+              onChange={(e) => setCostPriority(Number(e.target.value))}
+            />
           </div>
+          <span className="text-xs text-gray-400">
+            Higher = the optimizer trades more points to cut travel time / cost. Set both low to
+            chase points.
+          </span>
         </div>
-
-        <button
-          onClick={suggest}
-          className="w-fit rounded border border-black px-4 py-2 text-sm font-medium hover:bg-gray-50"
-        >
-          Suggest schedule
-        </button>
-        {suggestion && <p className="text-xs text-gray-500">{suggestion}</p>}
 
         {/* Live score summary for the current selection. */}
         <div className="grid grid-cols-2 gap-3 rounded border border-gray-200 p-3 text-sm sm:grid-cols-5">
@@ -415,7 +447,16 @@ export function CreateScheduleForm({
 
       {/* Right: event picker */}
       <div>
-        <h2 className="text-sm font-medium">Selected ({selected.length})</h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-medium">Selected ({selected.length})</h2>
+          <button
+            onClick={suggest}
+            className="rounded border border-black px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
+          >
+            Suggest schedule
+          </button>
+        </div>
+        {suggestion && <p className="mt-1 text-xs text-gray-500">{suggestion}</p>}
         {selected.length === 0 ? (
           <p className="mt-1 text-sm text-gray-500">
             Add events below, or hit <span className="font-medium">Suggest schedule</span>.
@@ -481,7 +522,7 @@ export function CreateScheduleForm({
           <div className="mt-4 rounded-lg border border-gray-200 p-3">
             <h3 className="text-sm font-medium text-gray-700">Getting around</h3>
             <p className="text-xs text-gray-400">
-              Recommended mode per hop — picked by your Priority &amp; transport prefs. You can
+              Recommended mode per hop — picked by your priorities &amp; transport prefs. You can
               change any leg after saving.
             </p>
             <ul className="mt-2 flex flex-col gap-2 text-xs">
@@ -608,17 +649,32 @@ export function CreateScheduleForm({
           )}
           {filteredAvailable.map((t) => {
             const collides = conflictsWith(t, path);
+            const v = eventExpectedValue(t);
+            const badge = ACCEPTANCE[t.acceptance];
             return (
               <li
                 key={t.id}
-                className="flex items-center justify-between rounded border border-gray-200 px-3 py-2 text-sm"
+                className="flex items-start justify-between gap-2 rounded border border-gray-200 px-3 py-2 text-sm"
               >
-                <span>
-                  {t.name}{" "}
-                  <span className="text-gray-500">
-                    · {t.city}, {t.country} · {formatDateRange(t.startDate, t.endDate)} · {formatTour(t.tour)}
-                  </span>
-                </span>
+                <div>
+                  <div>
+                    {t.name}{" "}
+                    <span className="text-gray-500">
+                      · {formatDateRange(t.startDate, t.endDate)} · {formatTour(t.tour)}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
+                    <span>
+                      {t.city}, {t.country} · {formatSurface(t.surface)}
+                    </span>
+                    <span>
+                      ≈{v.expectedPoints} pts · {formatMoney(v.expectedPrize)}
+                    </span>
+                    {badge && (
+                      <span className={`rounded px-1.5 py-0.5 ${badge.className}`}>{badge.label}</span>
+                    )}
+                  </div>
+                </div>
                 {collides ? (
                   <span className="whitespace-nowrap text-xs text-gray-400" title="Same week as a selected event">
                     Same week
@@ -626,7 +682,7 @@ export function CreateScheduleForm({
                 ) : (
                   <button
                     onClick={() => add(t.id)}
-                    className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
+                    className="whitespace-nowrap rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
                   >
                     Add
                   </button>
