@@ -7,7 +7,7 @@ import {
   formatDateRange,
   formatMoney,
   formatSurface,
-  formatTour,
+  formatTierLabel,
   formatTravelTime,
 } from "@/lib/format";
 import { lodgingSearchUrl } from "@/lib/booking-links";
@@ -72,9 +72,8 @@ function EventRow({
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2 text-xs">
-        <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">{formatTour(e.tour)}</span>
         <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">
-          {e.tier.replaceAll("_", " ")}
+          {formatTierLabel(e.tier)}
         </span>
         <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">
           {formatSurface(e.surface)}

@@ -50,6 +50,16 @@ export function formatTour(tour: string): string {
   return tour === "CHALLENGER" ? "Challenger" : tour;
 }
 
+// Combined tour+level label for an event pill, e.g. "Challenger 125", "ATP 250",
+// "WTA 1000", "ITF M25", "Grand Slam". The tier already encodes the tour, so this
+// replaces showing a separate (redundant) tour pill next to the tier.
+export function formatTierLabel(tier: string): string {
+  if (tier === "GRAND_SLAM") return "Grand Slam";
+  const [head, ...rest] = tier.split("_");
+  const label = head === "CHALLENGER" ? "Challenger" : head; // ATP/WTA/ITF stay upper-case
+  return rest.length ? `${label} ${rest.join(" ")}` : label;
+}
+
 export function formatTransportMode(mode: string): string {
   return capitalize(mode); // FLIGHT -> Flight, RIDESHARE -> Rideshare, …
 }
