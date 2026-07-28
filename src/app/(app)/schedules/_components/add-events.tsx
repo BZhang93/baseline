@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import type { PickerCandidate } from "@/lib/schedules";
-import { formatDateRange, formatTour, formatSurface } from "@/lib/format";
+import { formatDateRange, formatTierLabel, formatSurface } from "@/lib/format";
 import { addEventAction } from "../actions";
 
 // "Add event" affordance on the schedule detail (BRA-94): a collapsible picker
@@ -63,7 +63,7 @@ export function AddEvents({
                   {c.name}{" "}
                   <span className="text-gray-500">
                     · {c.city}, {c.country} · {formatDateRange(c.startDate, c.endDate)} ·{" "}
-                    {formatTour(c.tour)} · {formatSurface(c.surface)}
+                    {formatTierLabel(c.tier)} · {formatSurface(c.surface)}
                   </span>
                 </span>
                 <button
