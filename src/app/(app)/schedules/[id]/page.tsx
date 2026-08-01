@@ -1,7 +1,13 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentSession } from "@/lib/player";
-import { getScheduleDetail, getScheduleCandidates, type ScheduleEventView } from "@/lib/schedules";
+import {
+  getScheduleDetail,
+  getScheduleCandidates,
+  eventTimeBucket,
+  type ScheduleEventView,
+  type EventTimeBucket,
+} from "@/lib/schedules";
 import {
   formatDate,
   formatDateRange,
@@ -153,6 +159,25 @@ export default async function ScheduleDetailPage({
   // some events are same-week conflicts (excluded from the path).
   const legByAfter = new Map(schedule.legs.map((l) => [l.afterTournamentId, l]));
 
+  // Group events by where they fall relative to today (BRA-146). Events are
+  // already chronological, so buckets appear in past → current → upcoming order.
+  // Headers only show once there's more than one bucket in play.
+  const now = new Date();
+  const bucketed: Record<EventTimeBucket, ScheduleEventView[]> = {
+    past: [],
+    current: [],
+    upcoming: [],
+  };
+  for (const e of schedule.events) bucketed[eventTimeBucket(e, now)].push(e);
+  const BUCKET_ORDER: EventTimeBucket[] = ["past", "current", "upcoming"];
+  const BUCKET_LABEL: Record<EventTimeBucket, string> = {
+    past: "Past",
+    current: "This week",
+    upcoming: "Upcoming",
+  };
+  const activeBuckets = BUCKET_ORDER.filter((b) => bucketed[b].length > 0);
+  const showHeaders = activeBuckets.length > 1;
+
   return (
     <div>
       <Link href="/schedules" className="text-sm text-gray-500 underline">
@@ -262,27 +287,46 @@ export default async function ScheduleDetailPage({
           .
         </p>
       ) : (
-        <ol className="mt-6 flex flex-col gap-4">
-          {schedule.events.map((e) => {
-            const leg = legByAfter.get(e.tournamentId);
-            const current = byId.get(e.tournamentId);
-            // This week's alternatives: same-week, in-circuit, not already added.
-            const alternatives = current
-              ? allCandidates.filter(
-                  (c) => c.id !== current.id && !existingIds.has(c.id) && eventsOverlap(c, current),
-                )
-              : [];
-            return (
-              <li key={e.tournamentId} className="flex flex-col gap-3">
-                <EventRow scheduleId={schedule.id} e={e} />
-                {current && (
-                  <SwapEvent scheduleId={schedule.id} current={current} alternatives={alternatives} />
-                )}
-                {leg && <LegModeControl scheduleId={schedule.id} leg={leg} />}
-              </li>
-            );
-          })}
-        </ol>
+        <div className="mt-6 flex flex-col gap-6">
+          {activeBuckets.map((bucket) => (
+            <section key={bucket}>
+              {showHeaders && (
+                <h2
+                  className={`text-xs font-semibold uppercase tracking-wide ${
+                    bucket === "current" ? "text-gray-700" : "text-gray-400"
+                  }`}
+                >
+                  {BUCKET_LABEL[bucket]} ({bucketed[bucket].length})
+                </h2>
+              )}
+              <ol
+                className={`flex flex-col gap-4 ${showHeaders ? "mt-3" : ""} ${
+                  showHeaders && bucket === "past" ? "opacity-60" : ""
+                }`}
+              >
+                {bucketed[bucket].map((e) => {
+                  const leg = legByAfter.get(e.tournamentId);
+                  const cand = byId.get(e.tournamentId);
+                  // This week's alternatives: same-week, in-circuit, not already added.
+                  const alternatives = cand
+                    ? allCandidates.filter(
+                        (c) => c.id !== cand.id && !existingIds.has(c.id) && eventsOverlap(c, cand),
+                      )
+                    : [];
+                  return (
+                    <li key={e.tournamentId} className="flex flex-col gap-3">
+                      <EventRow scheduleId={schedule.id} e={e} />
+                      {cand && (
+                        <SwapEvent scheduleId={schedule.id} current={cand} alternatives={alternatives} />
+                      )}
+                      {leg && <LegModeControl scheduleId={schedule.id} leg={leg} />}
+                    </li>
+                  );
+                })}
+              </ol>
+            </section>
+          ))}
+        </div>
       )}
 
       <AddEvents scheduleId={schedule.id} candidates={addable} />
