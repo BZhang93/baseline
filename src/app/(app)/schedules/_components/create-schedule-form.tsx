@@ -507,8 +507,9 @@ export function CreateScheduleForm({
                       Find stays ↗
                     </a>
                     <button
+                      type="button"
                       onClick={() => remove(t.id)}
-                      className="text-xs text-gray-500 hover:text-red-600"
+                      className="inline-flex min-h-[44px] items-center text-xs text-gray-500 hover:text-red-600"
                     >
                       Remove
                     </button>

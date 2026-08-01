@@ -454,6 +454,16 @@ export interface ScheduleSummary {
   travelTimeMin: number | null;
   travelCost: number | null;
   netEarnings: number; // expectedPrize − travelCost − tripCosts
+  archivedAt: Date | null; // non-null once archived (BRA-100)
+}
+
+// A saved schedule is "past" once its last event (endDate, the real event span
+// or stored window end) is before today; undated schedules are never past, so
+// drafts stay current (BRA-100). Compared at UTC day granularity.
+export function scheduleIsPast(s: Pick<ScheduleSummary, "endDate">, now: Date): boolean {
+  if (s.endDate == null) return false;
+  const todayUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return s.endDate.getTime() < todayUTC;
 }
 
 export interface PickerTournament {
@@ -537,6 +547,7 @@ export async function getPlayerSchedules(
       travelTimeMin: built.scoreTravelTimeMin,
       travelCost: built.scoreTravelCost,
       netEarnings: expectedPrize - built.scoreTravelCost - s.tripCosts,
+      archivedAt: s.archivedAt,
     };
   });
 }
@@ -955,6 +966,20 @@ export async function swapScheduleEvent(
 
 export async function deleteSchedule(playerId: string, id: string): Promise<boolean> {
   const res = await prisma.schedule.deleteMany({ where: { id, playerId } });
+  return res.count > 0;
+}
+
+// Archive (or restore) a schedule without deleting it, so a player can put last
+// season's plan aside but keep its data (BRA-100). Returns false if not owned.
+export async function setScheduleArchived(
+  playerId: string,
+  id: string,
+  archived: boolean,
+): Promise<boolean> {
+  const res = await prisma.schedule.updateMany({
+    where: { id, playerId },
+    data: { archivedAt: archived ? new Date() : null },
+  });
   return res.count > 0;
 }
 

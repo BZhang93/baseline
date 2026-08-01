@@ -10,7 +10,7 @@ export default async function ProfilePage() {
   const onboarding = !isProfileComplete(p);
 
   return (
-    <div>
+    <div className="mx-auto max-w-3xl">
       <h1 className="text-2xl font-semibold">
         {onboarding ? "Welcome to Baseline" : "Profile"}
       </h1>

@@ -14,6 +14,7 @@ import {
   setScheduleLegMode,
   deleteSchedule,
   duplicateSchedule,
+  setScheduleArchived,
   type CreateScheduleInput,
 } from "@/lib/schedules";
 import type { TransportMode } from "@/generated/prisma/enums";
@@ -142,4 +143,23 @@ export async function deleteScheduleAction(id: string): Promise<void> {
   await deleteSchedule(session.player.id, id);
   revalidatePath("/schedules");
   redirect("/schedules");
+}
+
+// Archive a schedule (from its detail view) instead of deleting it (BRA-100).
+export async function archiveScheduleAction(id: string): Promise<void> {
+  const session = await getCurrentSession();
+  if (!session) return;
+  await setScheduleArchived(session.player.id, id, true);
+  revalidatePath("/schedules");
+  revalidatePath(`/schedules/${id}`);
+  redirect("/schedules");
+}
+
+// Restore an archived schedule back to the active list (BRA-100).
+export async function unarchiveScheduleAction(id: string): Promise<void> {
+  const session = await getCurrentSession();
+  if (!session) return;
+  await setScheduleArchived(session.player.id, id, false);
+  revalidatePath("/schedules");
+  revalidatePath(`/schedules/${id}`);
 }
