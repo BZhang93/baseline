@@ -288,19 +288,10 @@ export default async function ScheduleDetailPage({
         </p>
       ) : (
         <div className="mt-6 flex flex-col gap-6">
-          {activeBuckets.map((bucket) => (
-            <section key={bucket}>
-              {showHeaders && (
-                <h2
-                  className={`text-xs font-semibold uppercase tracking-wide ${
-                    bucket === "current" ? "text-gray-700" : "text-gray-400"
-                  }`}
-                >
-                  {BUCKET_LABEL[bucket]} ({bucketed[bucket].length})
-                </h2>
-              )}
+          {activeBuckets.map((bucket) => {
+            const list = (
               <ol
-                className={`flex flex-col gap-4 ${showHeaders ? "mt-3" : ""} ${
+                className={`flex flex-col gap-4 ${
                   showHeaders && bucket === "past" ? "opacity-60" : ""
                 }`}
               >
@@ -324,8 +315,25 @@ export default async function ScheduleDetailPage({
                   );
                 })}
               </ol>
-            </section>
-          ))}
+            );
+
+            // Single bucket: no header, just the list. With multiple buckets,
+            // each is a collapsible section — Past collapses by default, Current
+            // and Upcoming stay open (BRA-146 follow-up).
+            if (!showHeaders) return <section key={bucket}>{list}</section>;
+            return (
+              <details key={bucket} open={bucket !== "past"}>
+                <summary
+                  className={`cursor-pointer select-none text-xs font-semibold uppercase tracking-wide ${
+                    bucket === "current" ? "text-gray-700" : "text-gray-400"
+                  }`}
+                >
+                  {BUCKET_LABEL[bucket]} ({bucketed[bucket].length})
+                </summary>
+                <div className="mt-3">{list}</div>
+              </details>
+            );
+          })}
         </div>
       )}
 
