@@ -5,8 +5,27 @@ import {
   buildLegsAndScores,
   parseEventIdsParam,
   scheduleIsPast,
+  eventTimeBucket,
   type LegEvent,
 } from "./schedules";
+
+describe("eventTimeBucket", () => {
+  const now = new Date("2026-08-05T12:00:00Z");
+  const at = (start: string, end: string) => ({ startDate: new Date(start), endDate: new Date(end) });
+  it("past when the event already ended", () => {
+    expect(eventTimeBucket(at("2026-07-27", "2026-08-02"), now)).toBe("past");
+  });
+  it("current when today falls within the event week", () => {
+    expect(eventTimeBucket(at("2026-08-03", "2026-08-09"), now)).toBe("current");
+  });
+  it("current on the start day and the end day", () => {
+    expect(eventTimeBucket(at("2026-08-05", "2026-08-11"), now)).toBe("current");
+    expect(eventTimeBucket(at("2026-07-30", "2026-08-05"), now)).toBe("current");
+  });
+  it("upcoming when the event starts after today", () => {
+    expect(eventTimeBucket(at("2026-08-10", "2026-08-16"), now)).toBe("upcoming");
+  });
+});
 
 describe("scheduleIsPast", () => {
   const now = new Date("2026-08-01T12:00:00Z");

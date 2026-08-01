@@ -466,6 +466,21 @@ export function scheduleIsPast(s: Pick<ScheduleSummary, "endDate">, now: Date): 
   return s.endDate.getTime() < todayUTC;
 }
 
+export type EventTimeBucket = "past" | "current" | "upcoming";
+
+// Where a scheduled event sits relative to today (UTC day granularity): past
+// (already ended), current (in progress today), or upcoming (BRA-146). An event
+// running today, or starting today, is current.
+export function eventTimeBucket(
+  e: { startDate: Date; endDate: Date },
+  now: Date,
+): EventTimeBucket {
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  if (e.endDate.getTime() < today) return "past";
+  if (e.startDate.getTime() > today) return "upcoming";
+  return "current";
+}
+
 export interface PickerTournament {
   id: string;
   name: string;
