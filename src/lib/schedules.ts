@@ -457,6 +457,15 @@ export interface ScheduleSummary {
   archivedAt: Date | null; // non-null once archived (BRA-100)
 }
 
+// A saved schedule is "past" once its last event (endDate, the real event span
+// or stored window end) is before today; undated schedules are never past, so
+// drafts stay current (BRA-100). Compared at UTC day granularity.
+export function scheduleIsPast(s: Pick<ScheduleSummary, "endDate">, now: Date): boolean {
+  if (s.endDate == null) return false;
+  const todayUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return s.endDate.getTime() < todayUTC;
+}
+
 export interface PickerTournament {
   id: string;
   name: string;

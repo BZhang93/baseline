@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentSession } from "@/lib/player";
-import { getPlayerSchedules, type ScheduleSummary } from "@/lib/schedules";
+import { getPlayerSchedules, scheduleIsPast, type ScheduleSummary } from "@/lib/schedules";
 import { formatDateRange, formatMoney } from "@/lib/format";
 import { unarchiveScheduleAction } from "./actions";
 
@@ -56,7 +56,13 @@ export default async function SchedulesPage() {
   const session = await getCurrentSession();
   if (!session) redirect("/login");
   const schedules = await getPlayerSchedules(session.player.id, session.player);
+
+  // Archive is a manual axis; within the active (non-archived) set, split by
+  // date into current vs past. Undated drafts stay current (BRA-100).
+  const now = new Date();
   const active = schedules.filter((s) => s.archivedAt === null);
+  const current = active.filter((s) => !scheduleIsPast(s, now));
+  const past = active.filter((s) => scheduleIsPast(s, now));
   const archived = schedules.filter((s) => s.archivedAt !== null);
 
   return (
@@ -71,27 +77,38 @@ export default async function SchedulesPage() {
         </Link>
       </div>
 
-      {active.length === 0 ? (
+      {schedules.length === 0 ? (
         <p className="mt-6 text-gray-500">
-          {archived.length > 0
-            ? "No active schedules — your archived plans are below."
-            : "You haven't planned any schedules yet. "}
-          {archived.length === 0 && (
-            <>
-              <Link href="/schedules/new" className="underline">
-                Create your first
-              </Link>{" "}
-              to start mapping out your season. Points and prize are expected values
-              based on your ranking, net of estimated travel and your trip costs.
-            </>
-          )}
+          You haven&apos;t planned any schedules yet.{" "}
+          <Link href="/schedules/new" className="underline">
+            Create your first
+          </Link>{" "}
+          to start mapping out your season. Points and prize are expected values
+          based on your ranking, net of estimated travel and your trip costs.
         </p>
-      ) : (
+      ) : current.length > 0 ? (
         <ul className="mt-4 grid gap-3">
-          {active.map((s) => (
+          {current.map((s) => (
             <ScheduleCard key={s.id} s={s} />
           ))}
         </ul>
+      ) : (
+        <p className="mt-6 text-gray-500">
+          No current schedules. Your {past.length > 0 ? "past" : "archived"} plans are below.
+        </p>
+      )}
+
+      {past.length > 0 && (
+        <section className="mt-10">
+          <h2 className="text-sm font-medium text-gray-500">Past ({past.length})</h2>
+          <ul className="mt-3 grid gap-3">
+            {past.map((s) => (
+              <li key={s.id} className="opacity-70">
+                <ScheduleCardLink s={s} />
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {archived.length > 0 && (

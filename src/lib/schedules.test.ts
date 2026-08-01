@@ -4,8 +4,23 @@ import {
   estimateTravel,
   buildLegsAndScores,
   parseEventIdsParam,
+  scheduleIsPast,
   type LegEvent,
 } from "./schedules";
+
+describe("scheduleIsPast", () => {
+  const now = new Date("2026-08-01T12:00:00Z");
+  it("is past when the last event ended before today", () => {
+    expect(scheduleIsPast({ endDate: new Date("2026-07-26") }, now)).toBe(true);
+  });
+  it("is not past when the last event ends today or later", () => {
+    expect(scheduleIsPast({ endDate: new Date("2026-08-01") }, now)).toBe(false);
+    expect(scheduleIsPast({ endDate: new Date("2026-08-15") }, now)).toBe(false);
+  });
+  it("undated schedules are never past (drafts stay current)", () => {
+    expect(scheduleIsPast({ endDate: null }, now)).toBe(false);
+  });
+});
 
 function ev(
   startDate: string,
