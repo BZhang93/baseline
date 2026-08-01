@@ -2,6 +2,7 @@
 // surface links only — we don't transact (PRD v1 non-goal).
 
 import { TransportMode } from "@/generated/prisma/enums";
+import { OFFICIAL_URLS } from "./official-urls";
 
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -39,11 +40,13 @@ export function transportSearchUrl(
   }
 }
 
-// Link to a tournament's official website. We don't store canonical URLs yet
-// (a paid feed / curated data can supply them later, BRA-145), so this resolves
-// to a targeted search. The trailing "(ATP)"/"(WTA)"/date disambiguation suffix
-// is stripped so the query is the plain event name.
+// Link to a tournament's official website. Uses a curated direct URL when one is
+// provided in official-urls.ts (keyed by exact event name); otherwise falls back
+// to a targeted search, stripping the trailing "(ATP)"/"(WTA)"/date suffix so the
+// query is the plain event name (BRA-145).
 export function officialSiteUrl(name: string): string {
+  const direct = OFFICIAL_URLS[name];
+  if (direct) return direct;
   const clean = name.replace(/\s*\([^)]*\)\s*$/, "").trim();
   return googleSearchUrl(`${clean} tennis tournament official site`);
 }

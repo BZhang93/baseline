@@ -3,18 +3,19 @@ import { flightSearchUrl, lodgingSearchUrl, transportSearchUrl, officialSiteUrl 
 import { TransportMode } from "@/generated/prisma/enums";
 
 describe("officialSiteUrl", () => {
-  it("builds a search for the event's official site", () => {
-    const url = officialSiteUrl("Cincinnati Open");
+  // Fake names so adding real curated URLs to OFFICIAL_URLS never breaks these.
+  it("falls back to a search when no direct URL is mapped", () => {
+    const url = officialSiteUrl("Zzz Fake Open");
     expect(url).toContain("https://www.google.com/search?q=");
-    expect(decodeURIComponent(url)).toContain("Cincinnati Open tennis tournament official site");
+    expect(decodeURIComponent(url)).toContain("Zzz Fake Open tennis tournament official site");
   });
 
-  it("strips a trailing disambiguation suffix from the query", () => {
-    expect(decodeURIComponent(officialSiteUrl("Cincinnati Open (WTA)"))).toContain(
-      "Cincinnati Open tennis tournament official site",
+  it("strips a trailing disambiguation suffix from the fallback query", () => {
+    expect(decodeURIComponent(officialSiteUrl("Zzz Fake Open (WTA)"))).toContain(
+      "Zzz Fake Open tennis tournament official site",
     );
-    expect(decodeURIComponent(officialSiteUrl("Kingston Challenger (Aug 17)"))).toContain(
-      "Kingston Challenger tennis tournament official site",
+    expect(decodeURIComponent(officialSiteUrl("Zzz Fake Challenger (Aug 17)"))).toContain(
+      "Zzz Fake Challenger tennis tournament official site",
     );
   });
 });
