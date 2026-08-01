@@ -39,6 +39,15 @@ export function transportSearchUrl(
   }
 }
 
+// Link to a tournament's official website. We don't store canonical URLs yet
+// (a paid feed / curated data can supply them later, BRA-145), so this resolves
+// to a targeted search. The trailing "(ATP)"/"(WTA)"/date disambiguation suffix
+// is stripped so the query is the plain event name.
+export function officialSiteUrl(name: string): string {
+  const clean = name.replace(/\s*\([^)]*\)\s*$/, "").trim();
+  return googleSearchUrl(`${clean} tennis tournament official site`);
+}
+
 // Booking.com search for stays in a city, optionally with a check-in date.
 export function lodgingSearchUrl(
   city: string,
