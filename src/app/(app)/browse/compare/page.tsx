@@ -7,7 +7,7 @@ import {
   formatDateRange,
   formatMoney,
   formatSurface,
-  formatTour,
+  formatTierLabel,
   formatTravelTime,
 } from "@/lib/format";
 import { GapBadge } from "../../_components/gap-badge";
@@ -90,7 +90,7 @@ export default async function ComparePage({
               <Row
                 label="Tour / Tier"
                 events={events}
-                render={(e) => `${formatTour(e.tour)} · ${e.tier.replaceAll("_", " ")}`}
+                render={(e) => formatTierLabel(e.tier)}
               />
               <Row label="Surface" events={events} render={(e) => formatSurface(e.surface)} />
               <Row label="Draw" events={events} render={(e) => `${e.drawSize}`} />

@@ -15,6 +15,7 @@ import {
   formatDateRange,
   formatSurface,
   formatTour,
+  formatTierLabel,
   formatTravelTime,
   formatMoney,
   formatTransportMode,
@@ -661,7 +662,7 @@ export function CreateScheduleForm({
                   <div>
                     {t.name}{" "}
                     <span className="text-gray-500">
-                      · {formatDateRange(t.startDate, t.endDate)} · {formatTour(t.tour)}
+                      · {formatDateRange(t.startDate, t.endDate)} · {formatTierLabel(t.tier)}
                     </span>
                   </div>
                   <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">

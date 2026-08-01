@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import type { PickerCandidate } from "@/lib/schedules";
 import { eventExpectedValue } from "@/lib/optimizer";
 import type { AcceptanceStatus } from "@/lib/tournaments";
-import { formatMoney, formatTour, formatSurface } from "@/lib/format";
+import { formatMoney, formatTierLabel, formatSurface } from "@/lib/format";
 import { swapEventAction } from "../actions";
 
 const ACCEPTANCE: Record<AcceptanceStatus, { label: string; className: string } | null> = {
@@ -59,7 +59,7 @@ export function SwapEvent({
               <li key={a.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
                 <span className="font-medium text-gray-700">{a.name}</span>
                 <span className="text-gray-400">
-                  {formatTour(a.tour)} · {formatSurface(a.surface)}
+                  {formatTierLabel(a.tier)} · {formatSurface(a.surface)}
                 </span>
                 <span className="text-gray-600">
                   ≈{v.expectedPoints} pts <span className={deltaClass(dPts)}>({signed(dPts)})</span> ·{" "}
