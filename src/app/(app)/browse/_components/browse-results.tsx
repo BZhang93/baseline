@@ -6,7 +6,7 @@ import type { TournamentView } from "@/lib/tournaments";
 import type { AcceptanceStatus } from "@/lib/tournaments";
 import { formatDate, formatDateRange, formatMoney, formatSurface, formatTierLabel } from "@/lib/format";
 import { departureWindow } from "@/lib/departure";
-import { lodgingSearchUrl } from "@/lib/booking-links";
+import { lodgingSearchUrl, officialSiteUrl } from "@/lib/booking-links";
 import { GapBadge } from "../../_components/gap-badge";
 import { ChangeBadge } from "../../_components/change-badge";
 
@@ -69,7 +69,15 @@ function EventCard({
         </div>
       </div>
 
-      <div className="mt-3">
+      <div className="mt-3 flex flex-wrap gap-2">
+        <a
+          href={officialSiteUrl(t.name)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
+        >
+          Official site ↗
+        </a>
         <a
           href={lodgingSearchUrl(t.city, t.country, t.startDate)}
           target="_blank"

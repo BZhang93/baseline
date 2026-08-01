@@ -10,7 +10,7 @@ import {
   formatTierLabel,
   formatTravelTime,
 } from "@/lib/format";
-import { lodgingSearchUrl } from "@/lib/booking-links";
+import { lodgingSearchUrl, officialSiteUrl } from "@/lib/booking-links";
 import { GapBadge } from "../../_components/gap-badge";
 import { ChangeBadge } from "../../_components/change-badge";
 import { RenameName } from "../_components/rename-name";
@@ -104,7 +104,15 @@ function EventRow({
           </div>
         </div>
       </div>
-      <div className="mt-3">
+      <div className="mt-3 flex flex-wrap gap-2">
+        <a
+          href={officialSiteUrl(e.name)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={externalLink}
+        >
+          Official site ↗
+        </a>
         <a
           href={lodgingSearchUrl(e.city, e.country, e.arrivalDate)}
           target="_blank"

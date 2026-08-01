@@ -1,6 +1,23 @@
 import { describe, it, expect } from "vitest";
-import { flightSearchUrl, lodgingSearchUrl, transportSearchUrl } from "./booking-links";
+import { flightSearchUrl, lodgingSearchUrl, transportSearchUrl, officialSiteUrl } from "./booking-links";
 import { TransportMode } from "@/generated/prisma/enums";
+
+describe("officialSiteUrl", () => {
+  it("builds a search for the event's official site", () => {
+    const url = officialSiteUrl("Cincinnati Open");
+    expect(url).toContain("https://www.google.com/search?q=");
+    expect(decodeURIComponent(url)).toContain("Cincinnati Open tennis tournament official site");
+  });
+
+  it("strips a trailing disambiguation suffix from the query", () => {
+    expect(decodeURIComponent(officialSiteUrl("Cincinnati Open (WTA)"))).toContain(
+      "Cincinnati Open tennis tournament official site",
+    );
+    expect(decodeURIComponent(officialSiteUrl("Kingston Challenger (Aug 17)"))).toContain(
+      "Kingston Challenger tennis tournament official site",
+    );
+  });
+});
 
 describe("flightSearchUrl", () => {
   it("builds a Google Flights query from/to", () => {
