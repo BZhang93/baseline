@@ -25,6 +25,13 @@ import {
   PLAN_SYSTEM_PROMPT,
   type PlanIntent,
 } from "@/lib/ai/plan-intent";
+import {
+  normalizeRationales,
+  buildRationaleUserPrompt,
+  RATIONALE_SYSTEM_PROMPT,
+  type PickFact,
+  type RationaleContext,
+} from "@/lib/ai/rationale";
 
 // AI natural-language front door (BRA-47): turn a plain-language request into
 // validated optimizer INPUTS. The LLM never selects events — it only fills the
@@ -50,6 +57,25 @@ export async function planFromTextAction(
     return { intent: normalizePlanIntent(raw) };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "AI planning failed." };
+  }
+}
+
+// Grounded per-event rationale (BRA-47): the LLM explains each optimizer pick
+// from its ACTUAL numbers (passed in), never inventing figures. Returns one
+// string per pick, in order.
+export async function explainPlanAction(
+  picks: PickFact[],
+  context: RationaleContext,
+): Promise<{ rationales?: string[]; error?: string }> {
+  const session = await getCurrentSession();
+  if (!session) return { error: "You're not signed in." };
+  if (!aiConfigured()) return { error: "AI isn't set up yet." };
+  if (picks.length === 0) return { rationales: [] };
+  try {
+    const raw = await aiChatJson(RATIONALE_SYSTEM_PROMPT, buildRationaleUserPrompt(picks, context));
+    return { rationales: normalizeRationales(raw, picks.length) };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Rationale generation failed." };
   }
 }
 
