@@ -30,8 +30,14 @@ import {
   EMPTY_PICKER_FILTERS,
   type PickerFilters,
 } from "@/lib/picker-filter";
-import { createScheduleAction, updateScheduleAction, planFromTextAction } from "../actions";
+import {
+  createScheduleAction,
+  updateScheduleAction,
+  planFromTextAction,
+  explainPlanAction,
+} from "../actions";
 import type { PlanIntent } from "@/lib/ai/plan-intent";
+import type { PickFact } from "@/lib/ai/rationale";
 
 // Two independent priorities (0 = don't care … 100 = top priority):
 //   restPriority → how much to penalize travel TIME (protect the body / rest)
@@ -124,6 +130,8 @@ export function CreateScheduleForm({
   const [aiText, setAiText] = useState("");
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiPending, startAiTransition] = useTransition();
+  const [aiRationale, setAiRationale] = useState<Record<string, string>>({});
+  const [rationalePending, startRationaleTransition] = useTransition();
   const [isPending, startTransition] = useTransition();
 
   const byId = useMemo(() => new Map(candidates.map((t) => [t.id, t])), [candidates]);
@@ -231,6 +239,7 @@ export function CreateScheduleForm({
   // Run the optimizer over the events in the chosen window and adopt its pick.
   function suggest() {
     setError(null);
+    setAiRationale({});
     const fromD = from ? new Date(from) : null;
     const toD = to ? new Date(to) : null;
     const inWindow = candidates.filter(
@@ -258,6 +267,7 @@ export function CreateScheduleForm({
   // calls above are async, so we can't read them back here). The LLM never picks
   // events — optimizeSchedule does, over the intent's window/weights/constraints.
   function applyIntent(intent: PlanIntent) {
+    setAiRationale({});
     if (intent.restPriority != null) setRestPriority(intent.restPriority);
     if (intent.costPriority != null) setCostPriority(intent.costPriority);
     if (intent.from) setFrom(intent.from);
@@ -271,7 +281,10 @@ export function CreateScheduleForm({
     const fromD = intent.from ? new Date(intent.from) : from ? new Date(from) : null;
     const toD = intent.to ? new Date(intent.to) : to ? new Date(to) : null;
     const inWindow = candidates.filter(
-      (c) => (!fromD || c.endDate >= fromD) && (!toD || c.startDate <= toD),
+      (c) =>
+        (!fromD || c.endDate >= fromD) &&
+        (!toD || c.startDate <= toD) &&
+        (!intent.surfaces || intent.surfaces.includes(c.surface)),
     );
     const result = optimizeSchedule(inWindow, optimizerWeights(rest, cost), {
       maxEvents: intent.maxEvents ?? numberOrUndefined(maxEvents),
@@ -295,6 +308,47 @@ export function CreateScheduleForm({
     setSuggestion(
       `AI plan: ${result.events.length} event${result.events.length > 1 ? "s" : ""} — edit below; totals update live.${notedSuffix}`,
     );
+    generateRationale(result.events, intent, rest, cost);
+  }
+
+  // Grounded per-event "why" for the AI plan (BRA-47): the optimizer's real
+  // numbers are sent to the LLM, which explains each pick without inventing
+  // figures. Rendered under each selected event when it arrives.
+  function generateRationale(
+    events: { id: string }[],
+    intent: PlanIntent,
+    rest: number,
+    cost: number,
+  ) {
+    const picks: PickFact[] = [];
+    for (const e of events) {
+      const c = byId.get(e.id);
+      if (!c) continue;
+      const v = eventExpectedValue(c);
+      picks.push({
+        id: c.id,
+        name: c.name,
+        city: c.city,
+        country: c.country,
+        surface: c.surface,
+        expectedPoints: v.expectedPoints,
+        expectedPrize: v.expectedPrize,
+        reach: c.acceptance,
+      });
+    }
+    if (picks.length === 0) return;
+    const priorities = `rest priority ${rest}/100, cost priority ${cost}/100`;
+    startRationaleTransition(async () => {
+      const res = await explainPlanAction(picks, { priorities, note: intent.note });
+      if (res.rationales) {
+        const map: Record<string, string> = {};
+        picks.forEach((p, i) => {
+          const why = res.rationales![i];
+          if (why) map[p.id] = why;
+        });
+        setAiRationale(map);
+      }
+    });
   }
 
   function planWithAi() {
@@ -362,6 +416,7 @@ export function CreateScheduleForm({
               {aiPending ? "Planning…" : "Plan with AI"}
             </button>
             {aiError && <span className="text-xs text-red-600">{aiError}</span>}
+            {rationalePending && <span className="text-xs text-gray-400">explaining picks…</span>}
           </div>
         </div>
 
@@ -584,6 +639,9 @@ export function CreateScheduleForm({
                         </>
                       )}
                     </div>
+                    {aiRationale[t.id] && (
+                      <div className="mt-1 text-xs italic text-gray-500">{aiRationale[t.id]}</div>
+                    )}
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     <a
