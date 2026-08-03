@@ -18,6 +18,40 @@ import {
   type CreateScheduleInput,
 } from "@/lib/schedules";
 import type { TransportMode } from "@/generated/prisma/enums";
+import { aiConfigured, aiChatJson } from "@/lib/ai/client";
+import {
+  normalizePlanIntent,
+  buildPlanUserPrompt,
+  PLAN_SYSTEM_PROMPT,
+  type PlanIntent,
+} from "@/lib/ai/plan-intent";
+
+// AI natural-language front door (BRA-47): turn a plain-language request into
+// validated optimizer INPUTS. The LLM never selects events — it only fills the
+// knobs the deterministic optimizer already runs on. Returns a normalized
+// (sanitized) PlanIntent, or a user-facing error string.
+export async function planFromTextAction(
+  text: string,
+): Promise<{ intent?: PlanIntent; error?: string }> {
+  const session = await getCurrentSession();
+  if (!session) return { error: "You're not signed in." };
+  if (!text.trim()) return { error: "Describe what you're looking for first." };
+  if (!aiConfigured()) return { error: "AI planning isn't set up yet." };
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const raw = await aiChatJson(
+      PLAN_SYSTEM_PROMPT,
+      buildPlanUserPrompt(text, {
+        today,
+        circuit: session.player.circuit,
+        tours: session.player.tours,
+      }),
+    );
+    return { intent: normalizePlanIntent(raw) };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "AI planning failed." };
+  }
+}
 
 // Returned string is an error message shown to the user; success redirects.
 export async function createScheduleAction(

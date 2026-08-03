@@ -30,7 +30,8 @@ import {
   EMPTY_PICKER_FILTERS,
   type PickerFilters,
 } from "@/lib/picker-filter";
-import { createScheduleAction, updateScheduleAction } from "../actions";
+import { createScheduleAction, updateScheduleAction, planFromTextAction } from "../actions";
+import type { PlanIntent } from "@/lib/ai/plan-intent";
 
 // Two independent priorities (0 = don't care … 100 = top priority):
 //   restPriority → how much to penalize travel TIME (protect the body / rest)
@@ -120,6 +121,9 @@ export function CreateScheduleForm({
   const [selectedIds, setSelectedIds] = useState<string[]>(initialSelectedIds);
   const [error, setError] = useState<string | null>(null);
   const [suggestion, setSuggestion] = useState<string | null>(null);
+  const [aiText, setAiText] = useState("");
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiPending, startAiTransition] = useTransition();
   const [isPending, startTransition] = useTransition();
 
   const byId = useMemo(() => new Map(candidates.map((t) => [t.id, t])), [candidates]);
@@ -249,6 +253,60 @@ export function CreateScheduleForm({
     );
   }
 
+  // Apply an AI-parsed PlanIntent: set the visible optimizer knobs, then run the
+  // deterministic optimizer with the intent's values directly (the setState
+  // calls above are async, so we can't read them back here). The LLM never picks
+  // events — optimizeSchedule does, over the intent's window/weights/constraints.
+  function applyIntent(intent: PlanIntent) {
+    if (intent.restPriority != null) setRestPriority(intent.restPriority);
+    if (intent.costPriority != null) setCostPriority(intent.costPriority);
+    if (intent.from) setFrom(intent.from);
+    if (intent.to) handleToChange(intent.to);
+    if (intent.budgetCap != null) setBudgetCap(String(intent.budgetCap));
+    if (intent.maxEvents != null) setMaxEvents(String(intent.maxEvents));
+    if (intent.minRestDays != null) setMinRestDays(String(intent.minRestDays));
+
+    const rest = intent.restPriority ?? restPriority;
+    const cost = intent.costPriority ?? costPriority;
+    const fromD = intent.from ? new Date(intent.from) : from ? new Date(from) : null;
+    const toD = intent.to ? new Date(intent.to) : to ? new Date(to) : null;
+    const inWindow = candidates.filter(
+      (c) => (!fromD || c.endDate >= fromD) && (!toD || c.startDate <= toD),
+    );
+    const result = optimizeSchedule(inWindow, optimizerWeights(rest, cost), {
+      maxEvents: intent.maxEvents ?? numberOrUndefined(maxEvents),
+      minRestDays: intent.minRestDays ?? numberOrUndefined(minRestDays),
+      budgetCap: intent.budgetCap ?? numberOrUndefined(budgetCap),
+    });
+
+    const noted = [
+      intent.surfaces?.map((s) => s.toLowerCase()).join("/"),
+      intent.regions?.join("/"),
+      intent.note,
+    ]
+      .filter(Boolean)
+      .join("; ");
+    const notedSuffix = noted ? ` Also noted: ${noted}.` : "";
+    if (result.events.length === 0) {
+      setSuggestion(`Set your preferences, but no feasible events fit that window and budget.${notedSuffix}`);
+      return;
+    }
+    setSelectedIds(result.events.map((e) => e.id));
+    setSuggestion(
+      `AI plan: ${result.events.length} event${result.events.length > 1 ? "s" : ""} — edit below; totals update live.${notedSuffix}`,
+    );
+  }
+
+  function planWithAi() {
+    setAiError(null);
+    const text = aiText;
+    startAiTransition(async () => {
+      const res = await planFromTextAction(text);
+      if (res.error) setAiError(res.error);
+      else if (res.intent) applyIntent(res.intent);
+    });
+  }
+
   function submit() {
     setError(null);
     const input = {
@@ -277,6 +335,36 @@ export function CreateScheduleForm({
     <div className="grid gap-8 lg:grid-cols-2">
       {/* Left: settings */}
       <div className="flex flex-col gap-4">
+        {/* AI natural-language front door (BRA-47): fills the optimizer knobs,
+            then the deterministic optimizer drafts a feasible plan. */}
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium">Plan with AI</span>
+            <span className="text-xs text-gray-500">
+              Describe your ideal swing in plain words. It sets your window, priorities, and budget,
+              then drafts a feasible plan you can edit.
+            </span>
+            <textarea
+              value={aiText}
+              onChange={(e) => setAiText(e.target.value)}
+              rows={2}
+              placeholder="e.g. European clay in Aug–Sep, protect my body, travel under €6k, max 4 events"
+              className={`${field} resize-none`}
+            />
+          </label>
+          <div className="mt-2 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={planWithAi}
+              disabled={aiPending || !aiText.trim()}
+              className="rounded bg-black px-3 py-1.5 text-sm text-white disabled:opacity-50"
+            >
+              {aiPending ? "Planning…" : "Plan with AI"}
+            </button>
+            {aiError && <span className="text-xs text-red-600">{aiError}</span>}
+          </div>
+        </div>
+
         <label className={label}>
           Schedule Name
           <input
