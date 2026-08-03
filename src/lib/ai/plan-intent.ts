@@ -10,6 +10,7 @@ import { Surface, Tour } from "@/generated/prisma/enums";
 export interface PlanIntent {
   restPriority?: number; // 0-100, protect body / minimize travel time
   costPriority?: number; // 0-100, minimize travel cost
+  goalPriority?: number; // 0-100, prize money (0) <-> ranking points (100)
   from?: string; // YYYY-MM-DD
   to?: string; // YYYY-MM-DD
   surfaces?: Surface[];
@@ -63,6 +64,8 @@ export function normalizePlanIntent(raw: Record<string, unknown> | null | undefi
   if (rest !== undefined) intent.restPriority = rest;
   const cost = toInt(raw.costPriority, 0, 100);
   if (cost !== undefined) intent.costPriority = cost;
+  const goal = toInt(raw.goalPriority, 0, 100);
+  if (goal !== undefined) intent.goalPriority = goal;
 
   const from = toYmd(raw.from);
   if (from) intent.from = from;
@@ -98,6 +101,7 @@ export const PLAN_SYSTEM_PROMPT = `You translate a tennis player's plain-languag
 Fields (all optional — OMIT any the player did not imply; never guess):
 - restPriority: integer 0-100. Protecting the body / minimizing travel time and back-to-backs. Higher = more rest-focused.
 - costPriority: integer 0-100. Minimizing travel cost. Higher = more cost-sensitive.
+- goalPriority: integer 0-100. Prize money (0) to ranking points (100); 50 = balanced. Higher when chasing ranking, lower when chasing prize money.
 - from, to: dates "YYYY-MM-DD" bounding the planning window.
 - surfaces: array from "HARD","CLAY","GRASS".
 - tours: array from "ATP","WTA","CHALLENGER","ITF".
