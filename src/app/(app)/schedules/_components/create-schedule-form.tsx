@@ -39,22 +39,28 @@ import {
 import type { PlanIntent } from "@/lib/ai/plan-intent";
 import type { PickFact } from "@/lib/ai/rationale";
 
-// Two independent priorities (0 = don't care … 100 = top priority):
+// Player priorities (0-100 sliders):
 //   restPriority → how much to penalize travel TIME (protect the body / rest)
 //   costPriority → how much to penalize travel COST (save money)
-// Points/prize sit at a fixed baseline; raising a priority makes the optimizer
-// trade some points away to cut that kind of travel. One source of truth for
+//   goalPriority → prize money (0) ↔ ranking points (100); 50 = balanced.
+// goalPriority splits a fixed points+money budget (=2) between the two, floored
+// at 0.25 each so neither is ignored. At 50 it's points=1, money=1 (the previous
+// behavior, so it's the default and back-compatible). One source of truth for
 // both the optimizer preview and the saved schedule's weights.
-function optimizerWeights(restPriority: number, costPriority: number): OptimizerWeights {
+function optimizerWeights(
+  restPriority: number,
+  costPriority: number,
+  goalPriority = 50,
+): OptimizerWeights {
   return {
-    points: 1,
-    money: 1,
+    points: 0.25 + (goalPriority / 100) * 1.5,
+    money: 0.25 + ((100 - goalPriority) / 100) * 1.5,
     travelTime: 0.5 + (restPriority / 100) * 3,
     travelCost: 0.5 + (costPriority / 100) * 3,
   };
 }
-function scheduleWeights(restPriority: number, costPriority: number) {
-  const w = optimizerWeights(restPriority, costPriority);
+function scheduleWeights(restPriority: number, costPriority: number, goalPriority = 50) {
+  const w = optimizerWeights(restPriority, costPriority, goalPriority);
   return {
     weightPoints: w.points,
     weightMoney: w.money,
@@ -90,6 +96,7 @@ export interface ScheduleFormInitial {
   tripCosts?: string;
   restPriority?: number;
   costPriority?: number;
+  goalPriority?: number;
 }
 
 const TRANSPORT_ICON: Record<TransportMode, string> = {
@@ -124,6 +131,7 @@ export function CreateScheduleForm({
   const [tripCosts, setTripCosts] = useState(initial?.tripCosts ?? "");
   const [restPriority, setRestPriority] = useState(initial?.restPriority ?? 50);
   const [costPriority, setCostPriority] = useState(initial?.costPriority ?? 50);
+  const [goalPriority, setGoalPriority] = useState(initial?.goalPriority ?? 50);
   const [selectedIds, setSelectedIds] = useState<string[]>(initialSelectedIds);
   const [error, setError] = useState<string | null>(null);
   const [suggestion, setSuggestion] = useState<string | null>(null);
@@ -245,7 +253,7 @@ export function CreateScheduleForm({
     const inWindow = candidates.filter(
       (c) => (!fromD || c.endDate >= fromD) && (!toD || c.startDate <= toD),
     );
-    const result = optimizeSchedule(inWindow, optimizerWeights(restPriority, costPriority), {
+    const result = optimizeSchedule(inWindow, optimizerWeights(restPriority, costPriority, goalPriority), {
       maxEvents: numberOrUndefined(maxEvents),
       minRestDays: numberOrUndefined(minRestDays),
       budgetCap: numberOrUndefined(budgetCap),
@@ -270,6 +278,7 @@ export function CreateScheduleForm({
     setAiRationale({});
     if (intent.restPriority != null) setRestPriority(intent.restPriority);
     if (intent.costPriority != null) setCostPriority(intent.costPriority);
+    if (intent.goalPriority != null) setGoalPriority(intent.goalPriority);
     if (intent.from) setFrom(intent.from);
     if (intent.to) handleToChange(intent.to);
     if (intent.budgetCap != null) setBudgetCap(String(intent.budgetCap));
@@ -278,6 +287,7 @@ export function CreateScheduleForm({
 
     const rest = intent.restPriority ?? restPriority;
     const cost = intent.costPriority ?? costPriority;
+    const goal = intent.goalPriority ?? goalPriority;
     const fromD = intent.from ? new Date(intent.from) : from ? new Date(from) : null;
     const toD = intent.to ? new Date(intent.to) : to ? new Date(to) : null;
     const inWindow = candidates.filter(
@@ -286,7 +296,7 @@ export function CreateScheduleForm({
         (!toD || c.startDate <= toD) &&
         (!intent.surfaces || intent.surfaces.includes(c.surface)),
     );
-    const result = optimizeSchedule(inWindow, optimizerWeights(rest, cost), {
+    const result = optimizeSchedule(inWindow, optimizerWeights(rest, cost, goal), {
       maxEvents: intent.maxEvents ?? numberOrUndefined(maxEvents),
       minRestDays: intent.minRestDays ?? numberOrUndefined(minRestDays),
       budgetCap: intent.budgetCap ?? numberOrUndefined(budgetCap),
@@ -371,7 +381,7 @@ export function CreateScheduleForm({
       maxEvents: numberOrUndefined(maxEvents),
       minRestDays: numberOrUndefined(minRestDays),
       tripCosts: numberOrUndefined(tripCosts),
-      ...scheduleWeights(restPriority, costPriority),
+      ...scheduleWeights(restPriority, costPriority, goalPriority),
       tournamentIds: selectedIds,
     };
     startTransition(async () => {
@@ -524,9 +534,24 @@ export function CreateScheduleForm({
               onChange={(e) => setCostPriority(Number(e.target.value))}
             />
           </div>
+          <div className={label}>
+            <div className="flex justify-between text-xs">
+              <span>Prize money ↔ Ranking points</span>
+              <span className="text-gray-500">
+                {goalPriority < 40 ? "money" : goalPriority > 60 ? "points" : "balanced"}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={goalPriority}
+              onChange={(e) => setGoalPriority(Number(e.target.value))}
+            />
+          </div>
           <span className="text-xs text-gray-400">
-            Higher = the optimizer trades more points to cut travel time / cost. Set both low to
-            chase points.
+            Rest / cost: higher trades value to cut travel time / cost. Points vs money: slide toward
+            what you&apos;re chasing this swing.
           </span>
         </div>
 

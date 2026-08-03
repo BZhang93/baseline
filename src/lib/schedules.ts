@@ -351,6 +351,7 @@ export interface ScheduleEditData {
   tripCosts: string;
   restPriority: number;
   costPriority: number;
+  goalPriority: number;
   eventIds: string[];
 }
 
@@ -358,9 +359,12 @@ const toDateStr = (d: Date | null): string => (d ? d.toISOString().slice(0, 10) 
 
 // Pre-fill values for editing a schedule in the create form. The rest/cost
 // priorities are reverse-derived from the stored travel weights
-// (weightTravel* = 0.5 + 3·(priority/100)).
+// (weightTravel* = 0.5 + 3·(priority/100)); the points-vs-money goal from the
+// stored points weight (weightPoints = 0.25 + 1.5·(goal/100)).
 const priorityFromWeight = (w: number): number =>
   Math.max(0, Math.min(100, Math.round(((w - 0.5) / 3) * 100)));
+const goalFromWeight = (weightPoints: number): number =>
+  Math.max(0, Math.min(100, Math.round(((weightPoints - 0.25) / 1.5) * 100)));
 
 export async function getScheduleForEdit(
   playerId: string,
@@ -381,6 +385,7 @@ export async function getScheduleForEdit(
     tripCosts: s.tripCosts ? s.tripCosts.toString() : "",
     restPriority: priorityFromWeight(s.weightTravelTime),
     costPriority: priorityFromWeight(s.weightTravelCost),
+    goalPriority: goalFromWeight(s.weightPoints),
     eventIds: s.items.map((i) => i.tournamentId),
   };
 }
