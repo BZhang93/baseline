@@ -4,8 +4,8 @@ import { normalizePlanIntent } from "./plan-intent";
 describe("normalizePlanIntent", () => {
   it("keeps and clamps valid numeric priorities/constraints", () => {
     expect(
-      normalizePlanIntent({ restPriority: 70, costPriority: 40, maxEvents: 4, minRestDays: 1, budgetCap: 6000 }),
-    ).toEqual({ restPriority: 70, costPriority: 40, maxEvents: 4, minRestDays: 1, budgetCap: 6000 });
+      normalizePlanIntent({ restPriority: 70, costPriority: 40, goalPriority: 80, maxEvents: 4, minRestDays: 1, budgetCap: 6000 }),
+    ).toEqual({ restPriority: 70, costPriority: 40, goalPriority: 80, maxEvents: 4, minRestDays: 1, budgetCap: 6000 });
     expect(normalizePlanIntent({ restPriority: 999, costPriority: -5 })).toEqual({
       restPriority: 100,
       costPriority: 0,
