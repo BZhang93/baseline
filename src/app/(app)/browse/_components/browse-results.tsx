@@ -33,6 +33,14 @@ function EventCard({
             <p className="text-xs text-gray-400">
               Depart {formatDate(dep.earliest)}–{formatDate(dep.latest)} (draw {t.drawSize})
             </p>
+            {t.forecast.expectedResult && (
+              <p className="text-xs text-gray-400" title="Estimated from your ranking vs the field; sharpens with results/draw data">
+                Likely {t.forecast.expectedResult}
+                {t.forecast.deepRunProb > 0
+                  ? ` · ${Math.round(t.forecast.deepRunProb * 100)}% to reach SF+`
+                  : ""}
+              </p>
+            )}
           </div>
         </label>
         <GapBadge gap={t.gap} />
