@@ -70,10 +70,11 @@ function scheduleWeights(restPriority: number, costPriority: number, goalPriorit
   };
 }
 
-// Rest priority → the optimizer's soft cadence cap (BRA-69): a target monthly
-// event rate plus how hard to enforce spacing (weight 0 at rest 0, so the
-// lowest band imposes no cadence limit — play as many as feasible).
-function congestionFor(restPriority: number): { targetPerMonth: number; weight: number } {
+// Rest priority → the optimizer's soft recovery penalty (BRA-69): a target
+// monthly event rate plus how hard to enforce spacing / punish long-haul + time
+// zone jumps (weight 0 at rest 0, so the lowest band imposes no limit — play as
+// many as feasible).
+function recoveryFor(restPriority: number): { targetPerMonth: number; weight: number } {
   return { targetPerMonth: cadenceForRest(restPriority), weight: (restPriority / 100) * 2 };
 }
 
@@ -265,7 +266,7 @@ export function CreateScheduleForm({
       maxEvents: numberOrUndefined(maxEvents),
       minRestDays: numberOrUndefined(minRestDays),
       budgetCap: numberOrUndefined(budgetCap),
-      congestion: congestionFor(restPriority),
+      recovery: recoveryFor(restPriority),
     });
     if (result.events.length === 0) {
       setSuggestion("No feasible events in that window and budget.");
@@ -309,7 +310,7 @@ export function CreateScheduleForm({
       maxEvents: intent.maxEvents ?? numberOrUndefined(maxEvents),
       minRestDays: intent.minRestDays ?? numberOrUndefined(minRestDays),
       budgetCap: intent.budgetCap ?? numberOrUndefined(budgetCap),
-      congestion: congestionFor(rest),
+      recovery: recoveryFor(rest),
     });
 
     const noted = [

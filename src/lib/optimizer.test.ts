@@ -224,18 +224,34 @@ describe("optimizeSchedule", () => {
     expect(optimizeSchedule([E, F], W({ money: 1 })).events.map((e) => e.id)).toEqual(["F"]);
   });
 
-  it("congestion thins a tightly-spaced schedule at high rest (BRA-69)", () => {
-    // A, B, C are 10 days apart start-to-start. No cadence limit → play all.
+  it("recovery cadence thins a tightly-spaced schedule at high rest (BRA-69)", () => {
+    // A, B, C are 10 days apart start-to-start. No limit → play all.
     const relaxed = optimizeSchedule([A, B, C], W({ points: 1 }), {
-      congestion: { targetPerMonth: 5, weight: 0 },
+      recovery: { targetPerMonth: 5, weight: 0 },
     });
     expect(relaxed.events).toHaveLength(3);
     // Protect-body cadence (1/month, target gap 30d) heavily penalizes the tight
     // 10-day spacing, so the optimizer thins the schedule.
     const protective = optimizeSchedule([A, B, C], W({ points: 1 }), {
-      congestion: { targetPerMonth: 1, weight: 2 },
+      recovery: { targetPerMonth: 1, weight: 2 },
     });
     expect(protective.events.length).toBeLessThan(3);
+  });
+
+  it("recovery penalizes a long-haul / time-zone leg at high rest (BRA-69)", () => {
+    // Two well-spaced events (no cadence penalty at 19 days apart), but the
+    // second is a long-haul across the world (huge distance + time-zone jump).
+    const home = ev({ id: "H", startDate: d(1), endDate: d(7), lat: 40, long: 0 });
+    const far = ev({ id: "Far", startDate: d(20), endDate: d(26), lat: 35, long: 140 });
+    const relaxed = optimizeSchedule([home, far], W({ points: 1 }), {
+      recovery: { targetPerMonth: 5, weight: 0 },
+    });
+    expect(relaxed.events.map((e) => e.id)).toEqual(["H", "Far"]);
+    // At high rest the travel load makes the long-haul second event not worth it.
+    const protective = optimizeSchedule([home, far], W({ points: 1 }), {
+      recovery: { targetPerMonth: 2, weight: 2 },
+    });
+    expect(protective.events.map((e) => e.id)).toEqual(["H"]);
   });
 
   it("a stronger player earns more expected points at the same event", () => {

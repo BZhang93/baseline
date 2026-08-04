@@ -108,11 +108,11 @@ export interface OptimizerConstraints {
   minRestDays?: number; // required days between one event's end and the next's start
   budgetCap?: number; // max total estimated travel cost
   onlyQualified?: boolean; // hard-filter to events the player is "in"
-  // Recovery/load: a soft cadence cap (BRA-69). `targetPerMonth` is the desired
-  // event rate; `weight` (from the player's rest priority) is how hard to enforce
-  // spacing. Events packed tighter than the target rate are penalized in the
-  // objective, so a rest-focused player naturally gets a lighter schedule.
-  congestion?: { targetPerMonth: number; weight: number };
+  // Recovery/load (BRA-69): a soft "protect the body" penalty driven by rest
+  // priority. Penalizes events packed tighter than `targetPerMonth` (cadence),
+  // plus long-haul legs and big time-zone jumps between consecutive events.
+  // `weight` (from rest priority) is how hard all of it is enforced.
+  recovery?: { targetPerMonth: number; weight: number };
 }
 
 // Rest priority (0-100) → target events per ~30-day month, in 5 bands (higher
@@ -146,6 +146,8 @@ export interface OptimizedSchedule {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+// Beyond this, a leg reads as a long-haul flight (extra recovery cost, BRA-69).
+const LONG_HAUL_KM = 4000;
 
 function normalizedWeights(w: OptimizerWeights): OptimizerWeights {
   const sum = w.points + w.money + w.travelTime + w.travelCost;
@@ -232,7 +234,7 @@ export function optimizeSchedule(
   constraints: OptimizerConstraints = {},
 ): OptimizedSchedule {
   const w = normalizedWeights(weights);
-  const { maxEvents, minRestDays = 0, budgetCap, onlyQualified = false, congestion } = constraints;
+  const { maxEvents, minRestDays = 0, budgetCap, onlyQualified = false, recovery } = constraints;
 
   const pool = (onlyQualified ? candidates.filter((c) => c.acceptance === "in") : candidates)
     .slice()
@@ -296,21 +298,32 @@ export function optimizeSchedule(
       if (budgetCap != null && accCost + leg.cost > budgetCap) continue;
 
       const evE = ev.get(e.id)!;
-      // Congestion: penalize events packed tighter than the target cadence,
-      // measured start-to-start against the previous pick (BRA-69).
-      let congestionPenalty = 0;
-      if (prev && congestion) {
+      // Recovery/load penalty (BRA-69): cadence (events tighter than the target
+      // rate) + travel load (long-haul distance and time-zone jump) on the leg
+      // from the previous pick, all scaled by the rest-priority weight.
+      let recoveryPenalty = 0;
+      if (prev && recovery) {
         const gapDays = (e.startDate.getTime() - prev.startDate.getTime()) / DAY_MS;
-        const targetGapDays = 30 / congestion.targetPerMonth;
-        const shortfall = Math.max(0, 1 - gapDays / targetGapDays);
-        congestionPenalty = congestion.weight * shortfall;
+        const targetGapDays = 30 / recovery.targetPerMonth;
+        const cadence = Math.max(0, 1 - gapDays / targetGapDays);
+        let load = 0;
+        if (prev.lat != null && prev.long != null && e.lat != null && e.long != null) {
+          const distKm = haversineKm(
+            { lat: prev.lat, long: prev.long } as Coord,
+            { lat: e.lat, long: e.long } as Coord,
+          );
+          const longHaul = Math.min(1, Math.max(0, (distKm - LONG_HAUL_KM) / LONG_HAUL_KM));
+          const tzHours = Math.abs(prev.long - e.long) / 15; // ~15° of longitude per hour
+          load = longHaul + Math.min(1, tzHours / 10);
+        }
+        recoveryPenalty = recovery.weight * (cadence + load);
       }
       const add =
         w.points * (evE.expectedPoints / pScale) +
         w.money * (evE.expectedPrize / mScale) -
         w.travelTime * (leg.minutes / tScale) -
         w.travelCost * (leg.cost / cScale) -
-        congestionPenalty;
+        recoveryPenalty;
 
       search(i + 1, e, [...chosen, e.id], accScore + add, accCost + leg.cost);
     }
