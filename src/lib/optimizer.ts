@@ -108,6 +108,22 @@ export interface OptimizerConstraints {
   minRestDays?: number; // required days between one event's end and the next's start
   budgetCap?: number; // max total estimated travel cost
   onlyQualified?: boolean; // hard-filter to events the player is "in"
+  // Recovery/load: a soft cadence cap (BRA-69). `targetPerMonth` is the desired
+  // event rate; `weight` (from the player's rest priority) is how hard to enforce
+  // spacing. Events packed tighter than the target rate are penalized in the
+  // objective, so a rest-focused player naturally gets a lighter schedule.
+  congestion?: { targetPerMonth: number; weight: number };
+}
+
+// Rest priority (0-100) → target events per ~30-day month, in 5 bands (higher
+// rest = fewer events). 0-20 targets 5, effectively "as many as feasible" since
+// the one-event-per-week structure caps real cadence near 4/month (BRA-69).
+export function cadenceForRest(restPriority: number): number {
+  if (restPriority >= 80) return 1;
+  if (restPriority >= 60) return 2;
+  if (restPriority >= 40) return 3;
+  if (restPriority >= 20) return 4;
+  return 5;
 }
 
 export interface ScheduledEvent {
@@ -216,7 +232,7 @@ export function optimizeSchedule(
   constraints: OptimizerConstraints = {},
 ): OptimizedSchedule {
   const w = normalizedWeights(weights);
-  const { maxEvents, minRestDays = 0, budgetCap, onlyQualified = false } = constraints;
+  const { maxEvents, minRestDays = 0, budgetCap, onlyQualified = false, congestion } = constraints;
 
   const pool = (onlyQualified ? candidates.filter((c) => c.acceptance === "in") : candidates)
     .slice()
@@ -280,11 +296,21 @@ export function optimizeSchedule(
       if (budgetCap != null && accCost + leg.cost > budgetCap) continue;
 
       const evE = ev.get(e.id)!;
+      // Congestion: penalize events packed tighter than the target cadence,
+      // measured start-to-start against the previous pick (BRA-69).
+      let congestionPenalty = 0;
+      if (prev && congestion) {
+        const gapDays = (e.startDate.getTime() - prev.startDate.getTime()) / DAY_MS;
+        const targetGapDays = 30 / congestion.targetPerMonth;
+        const shortfall = Math.max(0, 1 - gapDays / targetGapDays);
+        congestionPenalty = congestion.weight * shortfall;
+      }
       const add =
         w.points * (evE.expectedPoints / pScale) +
         w.money * (evE.expectedPrize / mScale) -
         w.travelTime * (leg.minutes / tScale) -
-        w.travelCost * (leg.cost / cScale);
+        w.travelCost * (leg.cost / cScale) -
+        congestionPenalty;
 
       search(i + 1, e, [...chosen, e.id], accScore + add, accCost + leg.cost);
     }
