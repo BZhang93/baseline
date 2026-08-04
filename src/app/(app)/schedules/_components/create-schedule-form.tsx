@@ -149,6 +149,7 @@ export function CreateScheduleForm({
   const [aiPending, startAiTransition] = useTransition();
   const [aiRationale, setAiRationale] = useState<Record<string, string>>({});
   const [rationalePending, startRationaleTransition] = useTransition();
+  const [suggesting, setSuggesting] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const byId = useMemo(() => new Map(candidates.map((t) => [t.id, t])), [candidates]);
@@ -257,27 +258,38 @@ export function CreateScheduleForm({
   function suggest() {
     setError(null);
     setAiRationale({});
-    const fromD = from ? new Date(from) : null;
-    const toD = to ? new Date(to) : null;
-    const inWindow = candidates.filter(
-      (c) => (!fromD || c.endDate >= fromD) && (!toD || c.startDate <= toD),
-    );
-    const result = optimizeSchedule(inWindow, optimizerWeights(restPriority, costPriority, goalPriority), {
-      maxEvents: numberOrUndefined(maxEvents),
-      minRestDays: numberOrUndefined(minRestDays),
-      budgetCap: numberOrUndefined(budgetCap),
-      recovery: recoveryFor(restPriority),
-    });
-    if (result.events.length === 0) {
-      setSuggestion("No feasible events in that window and budget.");
-      return;
-    }
-    setSelectedIds(result.events.map((e) => e.id));
-    setSuggestion(
-      `Suggested ${result.events.length} event${
-        result.events.length > 1 ? "s" : ""
-      } — edit below and the totals update live.`,
-    );
+    setSuggesting(true);
+    setSuggestion("Suggesting your schedule…");
+    // Defer the (synchronous) optimize by a tick so the "Suggesting…" state
+    // paints first — the beam search is fast, but this keeps the UI responsive.
+    setTimeout(() => {
+      const fromD = from ? new Date(from) : null;
+      const toD = to ? new Date(to) : null;
+      const inWindow = candidates.filter(
+        (c) => (!fromD || c.endDate >= fromD) && (!toD || c.startDate <= toD),
+      );
+      const result = optimizeSchedule(
+        inWindow,
+        optimizerWeights(restPriority, costPriority, goalPriority),
+        {
+          maxEvents: numberOrUndefined(maxEvents),
+          minRestDays: numberOrUndefined(minRestDays),
+          budgetCap: numberOrUndefined(budgetCap),
+          recovery: recoveryFor(restPriority),
+        },
+      );
+      setSuggesting(false);
+      if (result.events.length === 0) {
+        setSuggestion("No feasible events in that window and budget.");
+        return;
+      }
+      setSelectedIds(result.events.map((e) => e.id));
+      setSuggestion(
+        `Suggested ${result.events.length} event${
+          result.events.length > 1 ? "s" : ""
+        } — edit below and the totals update live.`,
+      );
+    }, 0);
   }
 
   // Apply an AI-parsed PlanIntent: set the visible optimizer knobs, then run the
@@ -631,9 +643,10 @@ export function CreateScheduleForm({
           <h2 className="text-sm font-medium">Selected ({selected.length})</h2>
           <button
             onClick={suggest}
-            className="rounded border border-black px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
+            disabled={suggesting}
+            className="rounded border border-black px-3 py-1.5 text-sm font-medium hover:bg-gray-50 disabled:opacity-60"
           >
-            Suggest schedule
+            {suggesting ? "Suggesting…" : "Suggest schedule"}
           </button>
         </div>
         {suggestion && <p className="mt-1 text-xs text-gray-500">{suggestion}</p>}
