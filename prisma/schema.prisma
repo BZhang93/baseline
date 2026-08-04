@@ -283,6 +283,10 @@ model Schedule {
   items      ScheduleItem[]
   travelLegs TravelLeg[]
 
+  // Set when the player archives the schedule instead of deleting it, so last
+  // season's plans are kept out of the way but never lost (BRA-100). Null = active.
+  archivedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

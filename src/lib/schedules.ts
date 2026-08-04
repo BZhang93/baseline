@@ -351,6 +351,7 @@ export interface ScheduleEditData {
   tripCosts: string;
   restPriority: number;
   costPriority: number;
+  goalPriority: number;
   eventIds: string[];
 }
 
@@ -358,9 +359,12 @@ const toDateStr = (d: Date | null): string => (d ? d.toISOString().slice(0, 10) 
 
 // Pre-fill values for editing a schedule in the create form. The rest/cost
 // priorities are reverse-derived from the stored travel weights
-// (weightTravel* = 0.5 + 3·(priority/100)).
+// (weightTravel* = 0.5 + 3·(priority/100)); the points-vs-money goal from the
+// stored points weight (weightPoints = 0.25 + 1.5·(goal/100)).
 const priorityFromWeight = (w: number): number =>
   Math.max(0, Math.min(100, Math.round(((w - 0.5) / 3) * 100)));
+const goalFromWeight = (weightPoints: number): number =>
+  Math.max(0, Math.min(100, Math.round(((weightPoints - 0.25) / 1.5) * 100)));
 
 export async function getScheduleForEdit(
   playerId: string,
@@ -381,6 +385,7 @@ export async function getScheduleForEdit(
     tripCosts: s.tripCosts ? s.tripCosts.toString() : "",
     restPriority: priorityFromWeight(s.weightTravelTime),
     costPriority: priorityFromWeight(s.weightTravelCost),
+    goalPriority: goalFromWeight(s.weightPoints),
     eventIds: s.items.map((i) => i.tournamentId),
   };
 }
@@ -454,6 +459,31 @@ export interface ScheduleSummary {
   travelTimeMin: number | null;
   travelCost: number | null;
   netEarnings: number; // expectedPrize − travelCost − tripCosts
+  archivedAt: Date | null; // non-null once archived (BRA-100)
+}
+
+// A saved schedule is "past" once its last event (endDate, the real event span
+// or stored window end) is before today; undated schedules are never past, so
+// drafts stay current (BRA-100). Compared at UTC day granularity.
+export function scheduleIsPast(s: Pick<ScheduleSummary, "endDate">, now: Date): boolean {
+  if (s.endDate == null) return false;
+  const todayUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return s.endDate.getTime() < todayUTC;
+}
+
+export type EventTimeBucket = "past" | "current" | "upcoming";
+
+// Where a scheduled event sits relative to today (UTC day granularity): past
+// (already ended), current (in progress today), or upcoming (BRA-146). An event
+// running today, or starting today, is current.
+export function eventTimeBucket(
+  e: { startDate: Date; endDate: Date },
+  now: Date,
+): EventTimeBucket {
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  if (e.endDate.getTime() < today) return "past";
+  if (e.startDate.getTime() > today) return "upcoming";
+  return "current";
 }
 
 export interface PickerTournament {
@@ -537,6 +567,7 @@ export async function getPlayerSchedules(
       travelTimeMin: built.scoreTravelTimeMin,
       travelCost: built.scoreTravelCost,
       netEarnings: expectedPrize - built.scoreTravelCost - s.tripCosts,
+      archivedAt: s.archivedAt,
     };
   });
 }
@@ -955,6 +986,20 @@ export async function swapScheduleEvent(
 
 export async function deleteSchedule(playerId: string, id: string): Promise<boolean> {
   const res = await prisma.schedule.deleteMany({ where: { id, playerId } });
+  return res.count > 0;
+}
+
+// Archive (or restore) a schedule without deleting it, so a player can put last
+// season's plan aside but keep its data (BRA-100). Returns false if not owned.
+export async function setScheduleArchived(
+  playerId: string,
+  id: string,
+  archived: boolean,
+): Promise<boolean> {
+  const res = await prisma.schedule.updateMany({
+    where: { id, playerId },
+    data: { archivedAt: archived ? new Date() : null },
+  });
   return res.count > 0;
 }
 

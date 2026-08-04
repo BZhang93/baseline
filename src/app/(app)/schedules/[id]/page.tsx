@@ -1,16 +1,22 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentSession } from "@/lib/player";
-import { getScheduleDetail, getScheduleCandidates, type ScheduleEventView } from "@/lib/schedules";
+import {
+  getScheduleDetail,
+  getScheduleCandidates,
+  eventTimeBucket,
+  type ScheduleEventView,
+  type EventTimeBucket,
+} from "@/lib/schedules";
 import {
   formatDate,
   formatDateRange,
   formatMoney,
   formatSurface,
-  formatTour,
+  formatTierLabel,
   formatTravelTime,
 } from "@/lib/format";
-import { lodgingSearchUrl } from "@/lib/booking-links";
+import { lodgingSearchUrl, officialSiteUrl } from "@/lib/booking-links";
 import { GapBadge } from "../../_components/gap-badge";
 import { ChangeBadge } from "../../_components/change-badge";
 import { RenameName } from "../_components/rename-name";
@@ -19,7 +25,12 @@ import { LegModeControl } from "../_components/leg-mode-control";
 import { AddEvents } from "../_components/add-events";
 import { SwapEvent } from "../_components/swap-event";
 import { eventsOverlap } from "@/lib/schedule-path";
-import { removeEventAction, deleteScheduleAction, duplicateScheduleAction } from "../actions";
+import {
+  removeEventAction,
+  deleteScheduleAction,
+  duplicateScheduleAction,
+  archiveScheduleAction,
+} from "../actions";
 
 const externalLink =
   "rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50";
@@ -64,7 +75,7 @@ function EventRow({
           <form action={removeEventAction.bind(null, scheduleId, e.tournamentId)}>
             <button
               type="submit"
-              className="text-xs text-gray-500 hover:text-red-600"
+              className="inline-flex min-h-[44px] items-center text-xs text-gray-500 hover:text-red-600"
             >
               Remove
             </button>
@@ -72,9 +83,8 @@ function EventRow({
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2 text-xs">
-        <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">{formatTour(e.tour)}</span>
         <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">
-          {e.tier.replaceAll("_", " ")}
+          {formatTierLabel(e.tier)}
         </span>
         <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">
           {formatSurface(e.surface)}
@@ -100,7 +110,15 @@ function EventRow({
           </div>
         </div>
       </div>
-      <div className="mt-3">
+      <div className="mt-3 flex flex-wrap gap-2">
+        <a
+          href={officialSiteUrl(e.name)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={externalLink}
+        >
+          Official site ↗
+        </a>
         <a
           href={lodgingSearchUrl(e.city, e.country, e.arrivalDate)}
           target="_blank"
@@ -141,6 +159,25 @@ export default async function ScheduleDetailPage({
   // some events are same-week conflicts (excluded from the path).
   const legByAfter = new Map(schedule.legs.map((l) => [l.afterTournamentId, l]));
 
+  // Group events by where they fall relative to today (BRA-146). Events are
+  // already chronological, so buckets appear in past → current → upcoming order.
+  // Headers only show once there's more than one bucket in play.
+  const now = new Date();
+  const bucketed: Record<EventTimeBucket, ScheduleEventView[]> = {
+    past: [],
+    current: [],
+    upcoming: [],
+  };
+  for (const e of schedule.events) bucketed[eventTimeBucket(e, now)].push(e);
+  const BUCKET_ORDER: EventTimeBucket[] = ["past", "current", "upcoming"];
+  const BUCKET_LABEL: Record<EventTimeBucket, string> = {
+    past: "Past",
+    current: "This week",
+    upcoming: "Upcoming",
+  };
+  const activeBuckets = BUCKET_ORDER.filter((b) => bucketed[b].length > 0);
+  const showHeaders = activeBuckets.length > 1;
+
   return (
     <div>
       <Link href="/schedules" className="text-sm text-gray-500 underline">
@@ -162,6 +199,14 @@ export default async function ScheduleDetailPage({
               className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:border-gray-400"
             >
               Duplicate
+            </button>
+          </form>
+          <form action={archiveScheduleAction.bind(null, schedule.id)}>
+            <button
+              type="submit"
+              className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:border-gray-400"
+            >
+              Archive
             </button>
           </form>
           <form action={deleteScheduleAction.bind(null, schedule.id)}>
@@ -242,27 +287,54 @@ export default async function ScheduleDetailPage({
           .
         </p>
       ) : (
-        <ol className="mt-6 flex flex-col gap-4">
-          {schedule.events.map((e) => {
-            const leg = legByAfter.get(e.tournamentId);
-            const current = byId.get(e.tournamentId);
-            // This week's alternatives: same-week, in-circuit, not already added.
-            const alternatives = current
-              ? allCandidates.filter(
-                  (c) => c.id !== current.id && !existingIds.has(c.id) && eventsOverlap(c, current),
-                )
-              : [];
+        <div className="mt-6 flex flex-col gap-6">
+          {activeBuckets.map((bucket) => {
+            const list = (
+              <ol
+                className={`flex flex-col gap-4 ${
+                  showHeaders && bucket === "past" ? "opacity-60" : ""
+                }`}
+              >
+                {bucketed[bucket].map((e) => {
+                  const leg = legByAfter.get(e.tournamentId);
+                  const cand = byId.get(e.tournamentId);
+                  // This week's alternatives: same-week, in-circuit, not already added.
+                  const alternatives = cand
+                    ? allCandidates.filter(
+                        (c) => c.id !== cand.id && !existingIds.has(c.id) && eventsOverlap(c, cand),
+                      )
+                    : [];
+                  return (
+                    <li key={e.tournamentId} className="flex flex-col gap-3">
+                      <EventRow scheduleId={schedule.id} e={e} />
+                      {cand && (
+                        <SwapEvent scheduleId={schedule.id} current={cand} alternatives={alternatives} />
+                      )}
+                      {leg && <LegModeControl scheduleId={schedule.id} leg={leg} />}
+                    </li>
+                  );
+                })}
+              </ol>
+            );
+
+            // Single bucket: no header, just the list. With multiple buckets,
+            // each is a collapsible section — Past collapses by default, Current
+            // and Upcoming stay open (BRA-146 follow-up).
+            if (!showHeaders) return <section key={bucket}>{list}</section>;
             return (
-              <li key={e.tournamentId} className="flex flex-col gap-3">
-                <EventRow scheduleId={schedule.id} e={e} />
-                {current && (
-                  <SwapEvent scheduleId={schedule.id} current={current} alternatives={alternatives} />
-                )}
-                {leg && <LegModeControl scheduleId={schedule.id} leg={leg} />}
-              </li>
+              <details key={bucket} open={bucket !== "past"}>
+                <summary
+                  className={`cursor-pointer select-none text-xs font-semibold uppercase tracking-wide ${
+                    bucket === "current" ? "text-gray-700" : "text-gray-400"
+                  }`}
+                >
+                  {BUCKET_LABEL[bucket]} ({bucketed[bucket].length})
+                </summary>
+                <div className="mt-3">{list}</div>
+              </details>
             );
           })}
-        </ol>
+        </div>
       )}
 
       <AddEvents scheduleId={schedule.id} candidates={addable} />

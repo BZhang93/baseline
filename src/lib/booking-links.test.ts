@@ -1,6 +1,24 @@
 import { describe, it, expect } from "vitest";
-import { flightSearchUrl, lodgingSearchUrl, transportSearchUrl } from "./booking-links";
+import { flightSearchUrl, lodgingSearchUrl, transportSearchUrl, officialSiteUrl } from "./booking-links";
 import { TransportMode } from "@/generated/prisma/enums";
+
+describe("officialSiteUrl", () => {
+  // Fake names so adding real curated URLs to OFFICIAL_URLS never breaks these.
+  it("falls back to a search when no direct URL is mapped", () => {
+    const url = officialSiteUrl("Zzz Fake Open");
+    expect(url).toContain("https://www.google.com/search?q=");
+    expect(decodeURIComponent(url)).toContain("Zzz Fake Open tennis tournament official site");
+  });
+
+  it("strips a trailing disambiguation suffix from the fallback query", () => {
+    expect(decodeURIComponent(officialSiteUrl("Zzz Fake Open (WTA)"))).toContain(
+      "Zzz Fake Open tennis tournament official site",
+    );
+    expect(decodeURIComponent(officialSiteUrl("Zzz Fake Challenger (Aug 17)"))).toContain(
+      "Zzz Fake Challenger tennis tournament official site",
+    );
+  });
+});
 
 describe("flightSearchUrl", () => {
   it("builds a Google Flights query from/to", () => {

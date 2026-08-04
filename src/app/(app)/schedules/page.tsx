@@ -1,20 +1,20 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentSession } from "@/lib/player";
-import { getPlayerSchedules, type ScheduleSummary } from "@/lib/schedules";
+import { getPlayerSchedules, scheduleIsPast, type ScheduleSummary } from "@/lib/schedules";
 import { formatDateRange, formatMoney } from "@/lib/format";
+import { unarchiveScheduleAction } from "./actions";
 
 function fmtWindow(start: Date | null, end: Date | null): string {
   return start && end ? formatDateRange(start, end) : "No dates set";
 }
 
-function ScheduleCard({ s }: { s: ScheduleSummary }) {
+function ScheduleCardLink({ s }: { s: ScheduleSummary }) {
   return (
-    <li>
-      <Link
-        href={`/schedules/${s.id}`}
-        className="block rounded-lg border border-gray-200 p-4 hover:border-gray-400"
-      >
+    <Link
+      href={`/schedules/${s.id}`}
+      className="block rounded-lg border border-gray-200 p-4 hover:border-gray-400"
+    >
         <div className="flex items-baseline justify-between">
           <h3 className="font-medium">{s.name}</h3>
           <span className="text-sm text-gray-500">{s.eventCount} events</span>
@@ -40,7 +40,14 @@ function ScheduleCard({ s }: { s: ScheduleSummary }) {
             </div>
           </div>
         </div>
-      </Link>
+    </Link>
+  );
+}
+
+function ScheduleCard({ s }: { s: ScheduleSummary }) {
+  return (
+    <li>
+      <ScheduleCardLink s={s} />
     </li>
   );
 }
@@ -49,6 +56,14 @@ export default async function SchedulesPage() {
   const session = await getCurrentSession();
   if (!session) redirect("/login");
   const schedules = await getPlayerSchedules(session.player.id, session.player);
+
+  // Archive is a manual axis; within the active (non-archived) set, split by
+  // date into current vs past. Undated drafts stay current (BRA-100).
+  const now = new Date();
+  const active = schedules.filter((s) => s.archivedAt === null);
+  const current = active.filter((s) => !scheduleIsPast(s, now));
+  const past = active.filter((s) => scheduleIsPast(s, now));
+  const archived = schedules.filter((s) => s.archivedAt !== null);
 
   return (
     <div>
@@ -71,12 +86,55 @@ export default async function SchedulesPage() {
           to start mapping out your season. Points and prize are expected values
           based on your ranking, net of estimated travel and your trip costs.
         </p>
-      ) : (
+      ) : current.length > 0 ? (
         <ul className="mt-4 grid gap-3">
-          {schedules.map((s) => (
+          {current.map((s) => (
             <ScheduleCard key={s.id} s={s} />
           ))}
         </ul>
+      ) : (
+        <p className="mt-6 text-gray-500">
+          No current schedules. Your {past.length > 0 ? "past" : "archived"} plans are below.
+        </p>
+      )}
+
+      {past.length > 0 && (
+        <section className="mt-10">
+          <h2 className="text-sm font-medium text-gray-500">Past ({past.length})</h2>
+          <ul className="mt-3 grid gap-3">
+            {past.map((s) => (
+              <li key={s.id} className="opacity-70">
+                <ScheduleCardLink s={s} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {archived.length > 0 && (
+        <section className="mt-10">
+          <h2 className="text-sm font-medium text-gray-500">
+            Archived ({archived.length})
+          </h2>
+          <ul className="mt-3 grid gap-3">
+            {archived.map((s) => (
+              <li key={s.id} className="opacity-70">
+                <ScheduleCardLink s={s} />
+                <form
+                  action={unarchiveScheduleAction.bind(null, s.id)}
+                  className="mt-1 flex justify-end"
+                >
+                  <button
+                    type="submit"
+                    className="inline-flex min-h-[44px] items-center text-xs text-gray-500 underline hover:text-gray-800"
+                  >
+                    Restore to active
+                  </button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
     </div>
   );

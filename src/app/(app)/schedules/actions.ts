@@ -14,9 +14,70 @@ import {
   setScheduleLegMode,
   deleteSchedule,
   duplicateSchedule,
+  setScheduleArchived,
   type CreateScheduleInput,
 } from "@/lib/schedules";
 import type { TransportMode } from "@/generated/prisma/enums";
+import { aiConfigured, aiChatJson } from "@/lib/ai/client";
+import {
+  normalizePlanIntent,
+  buildPlanUserPrompt,
+  PLAN_SYSTEM_PROMPT,
+  type PlanIntent,
+} from "@/lib/ai/plan-intent";
+import {
+  normalizeRationales,
+  buildRationaleUserPrompt,
+  RATIONALE_SYSTEM_PROMPT,
+  type PickFact,
+  type RationaleContext,
+} from "@/lib/ai/rationale";
+
+// AI natural-language front door (BRA-47): turn a plain-language request into
+// validated optimizer INPUTS. The LLM never selects events — it only fills the
+// knobs the deterministic optimizer already runs on. Returns a normalized
+// (sanitized) PlanIntent, or a user-facing error string.
+export async function planFromTextAction(
+  text: string,
+): Promise<{ intent?: PlanIntent; error?: string }> {
+  const session = await getCurrentSession();
+  if (!session) return { error: "You're not signed in." };
+  if (!text.trim()) return { error: "Describe what you're looking for first." };
+  if (!aiConfigured()) return { error: "AI planning isn't set up yet." };
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const raw = await aiChatJson(
+      PLAN_SYSTEM_PROMPT,
+      buildPlanUserPrompt(text, {
+        today,
+        circuit: session.player.circuit,
+        tours: session.player.tours,
+      }),
+    );
+    return { intent: normalizePlanIntent(raw) };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "AI planning failed." };
+  }
+}
+
+// Grounded per-event rationale (BRA-47): the LLM explains each optimizer pick
+// from its ACTUAL numbers (passed in), never inventing figures. Returns one
+// string per pick, in order.
+export async function explainPlanAction(
+  picks: PickFact[],
+  context: RationaleContext,
+): Promise<{ rationales?: string[]; error?: string }> {
+  const session = await getCurrentSession();
+  if (!session) return { error: "You're not signed in." };
+  if (!aiConfigured()) return { error: "AI isn't set up yet." };
+  if (picks.length === 0) return { rationales: [] };
+  try {
+    const raw = await aiChatJson(RATIONALE_SYSTEM_PROMPT, buildRationaleUserPrompt(picks, context));
+    return { rationales: normalizeRationales(raw, picks.length) };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Rationale generation failed." };
+  }
+}
 
 // Returned string is an error message shown to the user; success redirects.
 export async function createScheduleAction(
@@ -142,4 +203,23 @@ export async function deleteScheduleAction(id: string): Promise<void> {
   await deleteSchedule(session.player.id, id);
   revalidatePath("/schedules");
   redirect("/schedules");
+}
+
+// Archive a schedule (from its detail view) instead of deleting it (BRA-100).
+export async function archiveScheduleAction(id: string): Promise<void> {
+  const session = await getCurrentSession();
+  if (!session) return;
+  await setScheduleArchived(session.player.id, id, true);
+  revalidatePath("/schedules");
+  revalidatePath(`/schedules/${id}`);
+  redirect("/schedules");
+}
+
+// Restore an archived schedule back to the active list (BRA-100).
+export async function unarchiveScheduleAction(id: string): Promise<void> {
+  const session = await getCurrentSession();
+  if (!session) return;
+  await setScheduleArchived(session.player.id, id, false);
+  revalidatePath("/schedules");
+  revalidatePath(`/schedules/${id}`);
 }

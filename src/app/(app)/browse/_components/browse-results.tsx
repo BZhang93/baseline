@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { TournamentView } from "@/lib/tournaments";
 import type { AcceptanceStatus } from "@/lib/tournaments";
-import { formatDate, formatDateRange, formatMoney, formatSurface, formatTour } from "@/lib/format";
+import { formatDate, formatDateRange, formatMoney, formatSurface, formatTierLabel } from "@/lib/format";
 import { departureWindow } from "@/lib/departure";
-import { lodgingSearchUrl } from "@/lib/booking-links";
+import { lodgingSearchUrl, officialSiteUrl } from "@/lib/booking-links";
 import { GapBadge } from "../../_components/gap-badge";
 import { ChangeBadge } from "../../_components/change-badge";
 
@@ -39,9 +39,8 @@ function EventCard({
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2 text-xs">
-        <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">{formatTour(t.tour)}</span>
         <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">
-          {t.tier.replaceAll("_", " ")}
+          {formatTierLabel(t.tier)}
         </span>
         <span className="rounded bg-gray-100 px-2 py-0.5 text-gray-700">
           {formatSurface(t.surface)}
@@ -70,7 +69,15 @@ function EventCard({
         </div>
       </div>
 
-      <div className="mt-3">
+      <div className="mt-3 flex flex-wrap gap-2">
+        <a
+          href={officialSiteUrl(t.name)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
+        >
+          Official site ↗
+        </a>
         <a
           href={lodgingSearchUrl(t.city, t.country, t.startDate)}
           target="_blank"
@@ -151,7 +158,7 @@ export function BrowseResults({ tournaments }: { tournaments: TournamentView[] }
           .
         </p>
       ) : (
-        <ul className="mt-4 grid gap-3 pb-20">
+        <ul className="mt-4 grid gap-3 pb-20 lg:grid-cols-2">
           {displayed.map((t) => (
             <EventCard
               key={t.id}

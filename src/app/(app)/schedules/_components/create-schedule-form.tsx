@@ -7,6 +7,7 @@ import {
   optimizeSchedule,
   scheduleTotals,
   eventExpectedValue,
+  cadenceForRest,
   type OptimizerWeights,
 } from "@/lib/optimizer";
 import type { AcceptanceStatus } from "@/lib/tournaments";
@@ -15,6 +16,7 @@ import {
   formatDateRange,
   formatSurface,
   formatTour,
+  formatTierLabel,
   formatTravelTime,
   formatMoney,
   formatTransportMode,
@@ -29,30 +31,51 @@ import {
   EMPTY_PICKER_FILTERS,
   type PickerFilters,
 } from "@/lib/picker-filter";
-import { createScheduleAction, updateScheduleAction } from "../actions";
+import {
+  createScheduleAction,
+  updateScheduleAction,
+  planFromTextAction,
+  explainPlanAction,
+} from "../actions";
+import type { PlanIntent } from "@/lib/ai/plan-intent";
+import type { PickFact } from "@/lib/ai/rationale";
 
-// Two independent priorities (0 = don't care … 100 = top priority):
+// Player priorities (0-100 sliders):
 //   restPriority → how much to penalize travel TIME (protect the body / rest)
 //   costPriority → how much to penalize travel COST (save money)
-// Points/prize sit at a fixed baseline; raising a priority makes the optimizer
-// trade some points away to cut that kind of travel. One source of truth for
+//   goalPriority → prize money (0) ↔ ranking points (100); 50 = balanced.
+// goalPriority splits a fixed points+money budget (=2) between the two, floored
+// at 0.25 each so neither is ignored. At 50 it's points=1, money=1 (the previous
+// behavior, so it's the default and back-compatible). One source of truth for
 // both the optimizer preview and the saved schedule's weights.
-function optimizerWeights(restPriority: number, costPriority: number): OptimizerWeights {
+function optimizerWeights(
+  restPriority: number,
+  costPriority: number,
+  goalPriority = 50,
+): OptimizerWeights {
   return {
-    points: 1,
-    money: 1,
+    points: 0.25 + (goalPriority / 100) * 1.5,
+    money: 0.25 + ((100 - goalPriority) / 100) * 1.5,
     travelTime: 0.5 + (restPriority / 100) * 3,
     travelCost: 0.5 + (costPriority / 100) * 3,
   };
 }
-function scheduleWeights(restPriority: number, costPriority: number) {
-  const w = optimizerWeights(restPriority, costPriority);
+function scheduleWeights(restPriority: number, costPriority: number, goalPriority = 50) {
+  const w = optimizerWeights(restPriority, costPriority, goalPriority);
   return {
     weightPoints: w.points,
     weightMoney: w.money,
     weightTravelTime: w.travelTime,
     weightTravelCost: w.travelCost,
   };
+}
+
+// Rest priority → the optimizer's soft recovery penalty (BRA-69): a target
+// monthly event rate plus how hard to enforce spacing / punish long-haul + time
+// zone jumps (weight 0 at rest 0, so the lowest band imposes no limit — play as
+// many as feasible).
+function recoveryFor(restPriority: number): { targetPerMonth: number; weight: number } {
+  return { targetPerMonth: cadenceForRest(restPriority), weight: (restPriority / 100) * 2 };
 }
 
 function numberOrUndefined(v: string): number | undefined {
@@ -82,6 +105,7 @@ export interface ScheduleFormInitial {
   tripCosts?: string;
   restPriority?: number;
   costPriority?: number;
+  goalPriority?: number;
 }
 
 const TRANSPORT_ICON: Record<TransportMode, string> = {
@@ -116,9 +140,15 @@ export function CreateScheduleForm({
   const [tripCosts, setTripCosts] = useState(initial?.tripCosts ?? "");
   const [restPriority, setRestPriority] = useState(initial?.restPriority ?? 50);
   const [costPriority, setCostPriority] = useState(initial?.costPriority ?? 50);
+  const [goalPriority, setGoalPriority] = useState(initial?.goalPriority ?? 50);
   const [selectedIds, setSelectedIds] = useState<string[]>(initialSelectedIds);
   const [error, setError] = useState<string | null>(null);
   const [suggestion, setSuggestion] = useState<string | null>(null);
+  const [aiText, setAiText] = useState("");
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiPending, startAiTransition] = useTransition();
+  const [aiRationale, setAiRationale] = useState<Record<string, string>>({});
+  const [rationalePending, startRationaleTransition] = useTransition();
   const [isPending, startTransition] = useTransition();
 
   const byId = useMemo(() => new Map(candidates.map((t) => [t.id, t])), [candidates]);
@@ -226,15 +256,17 @@ export function CreateScheduleForm({
   // Run the optimizer over the events in the chosen window and adopt its pick.
   function suggest() {
     setError(null);
+    setAiRationale({});
     const fromD = from ? new Date(from) : null;
     const toD = to ? new Date(to) : null;
     const inWindow = candidates.filter(
       (c) => (!fromD || c.endDate >= fromD) && (!toD || c.startDate <= toD),
     );
-    const result = optimizeSchedule(inWindow, optimizerWeights(restPriority, costPriority), {
+    const result = optimizeSchedule(inWindow, optimizerWeights(restPriority, costPriority, goalPriority), {
       maxEvents: numberOrUndefined(maxEvents),
       minRestDays: numberOrUndefined(minRestDays),
       budgetCap: numberOrUndefined(budgetCap),
+      recovery: recoveryFor(restPriority),
     });
     if (result.events.length === 0) {
       setSuggestion("No feasible events in that window and budget.");
@@ -248,6 +280,108 @@ export function CreateScheduleForm({
     );
   }
 
+  // Apply an AI-parsed PlanIntent: set the visible optimizer knobs, then run the
+  // deterministic optimizer with the intent's values directly (the setState
+  // calls above are async, so we can't read them back here). The LLM never picks
+  // events — optimizeSchedule does, over the intent's window/weights/constraints.
+  function applyIntent(intent: PlanIntent) {
+    setAiRationale({});
+    if (intent.restPriority != null) setRestPriority(intent.restPriority);
+    if (intent.costPriority != null) setCostPriority(intent.costPriority);
+    if (intent.goalPriority != null) setGoalPriority(intent.goalPriority);
+    if (intent.from) setFrom(intent.from);
+    if (intent.to) handleToChange(intent.to);
+    if (intent.budgetCap != null) setBudgetCap(String(intent.budgetCap));
+    if (intent.maxEvents != null) setMaxEvents(String(intent.maxEvents));
+    if (intent.minRestDays != null) setMinRestDays(String(intent.minRestDays));
+
+    const rest = intent.restPriority ?? restPriority;
+    const cost = intent.costPriority ?? costPriority;
+    const goal = intent.goalPriority ?? goalPriority;
+    const fromD = intent.from ? new Date(intent.from) : from ? new Date(from) : null;
+    const toD = intent.to ? new Date(intent.to) : to ? new Date(to) : null;
+    const inWindow = candidates.filter(
+      (c) =>
+        (!fromD || c.endDate >= fromD) &&
+        (!toD || c.startDate <= toD) &&
+        (!intent.surfaces || intent.surfaces.includes(c.surface)),
+    );
+    const result = optimizeSchedule(inWindow, optimizerWeights(rest, cost, goal), {
+      maxEvents: intent.maxEvents ?? numberOrUndefined(maxEvents),
+      minRestDays: intent.minRestDays ?? numberOrUndefined(minRestDays),
+      budgetCap: intent.budgetCap ?? numberOrUndefined(budgetCap),
+      recovery: recoveryFor(rest),
+    });
+
+    const noted = [
+      intent.surfaces?.map((s) => s.toLowerCase()).join("/"),
+      intent.regions?.join("/"),
+      intent.note,
+    ]
+      .filter(Boolean)
+      .join("; ");
+    const notedSuffix = noted ? ` Also noted: ${noted}.` : "";
+    if (result.events.length === 0) {
+      setSuggestion(`Set your preferences, but no feasible events fit that window and budget.${notedSuffix}`);
+      return;
+    }
+    setSelectedIds(result.events.map((e) => e.id));
+    setSuggestion(
+      `AI plan: ${result.events.length} event${result.events.length > 1 ? "s" : ""} — edit below; totals update live.${notedSuffix}`,
+    );
+    generateRationale(result.events, intent, rest, cost);
+  }
+
+  // Grounded per-event "why" for the AI plan (BRA-47): the optimizer's real
+  // numbers are sent to the LLM, which explains each pick without inventing
+  // figures. Rendered under each selected event when it arrives.
+  function generateRationale(
+    events: { id: string }[],
+    intent: PlanIntent,
+    rest: number,
+    cost: number,
+  ) {
+    const picks: PickFact[] = [];
+    for (const e of events) {
+      const c = byId.get(e.id);
+      if (!c) continue;
+      const v = eventExpectedValue(c);
+      picks.push({
+        id: c.id,
+        name: c.name,
+        city: c.city,
+        country: c.country,
+        surface: c.surface,
+        expectedPoints: v.expectedPoints,
+        expectedPrize: v.expectedPrize,
+        reach: c.acceptance,
+      });
+    }
+    if (picks.length === 0) return;
+    const priorities = `rest priority ${rest}/100, cost priority ${cost}/100`;
+    startRationaleTransition(async () => {
+      const res = await explainPlanAction(picks, { priorities, note: intent.note });
+      if (res.rationales) {
+        const map: Record<string, string> = {};
+        picks.forEach((p, i) => {
+          const why = res.rationales![i];
+          if (why) map[p.id] = why;
+        });
+        setAiRationale(map);
+      }
+    });
+  }
+
+  function planWithAi() {
+    setAiError(null);
+    const text = aiText;
+    startAiTransition(async () => {
+      const res = await planFromTextAction(text);
+      if (res.error) setAiError(res.error);
+      else if (res.intent) applyIntent(res.intent);
+    });
+  }
+
   function submit() {
     setError(null);
     const input = {
@@ -258,7 +392,7 @@ export function CreateScheduleForm({
       maxEvents: numberOrUndefined(maxEvents),
       minRestDays: numberOrUndefined(minRestDays),
       tripCosts: numberOrUndefined(tripCosts),
-      ...scheduleWeights(restPriority, costPriority),
+      ...scheduleWeights(restPriority, costPriority, goalPriority),
       tournamentIds: selectedIds,
     };
     startTransition(async () => {
@@ -276,6 +410,37 @@ export function CreateScheduleForm({
     <div className="grid gap-8 lg:grid-cols-2">
       {/* Left: settings */}
       <div className="flex flex-col gap-4">
+        {/* AI natural-language front door (BRA-47): fills the optimizer knobs,
+            then the deterministic optimizer drafts a feasible plan. */}
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium">Plan with AI</span>
+            <span className="text-xs text-gray-500">
+              Describe your ideal swing in plain words. It sets your window, priorities, and budget,
+              then drafts a feasible plan you can edit.
+            </span>
+            <textarea
+              value={aiText}
+              onChange={(e) => setAiText(e.target.value)}
+              rows={2}
+              placeholder="e.g. European clay in Aug–Sep, protect my body, travel under €6k, max 4 events"
+              className={`${field} resize-none`}
+            />
+          </label>
+          <div className="mt-2 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={planWithAi}
+              disabled={aiPending || !aiText.trim()}
+              className="rounded bg-black px-3 py-1.5 text-sm text-white disabled:opacity-50"
+            >
+              {aiPending ? "Planning…" : "Plan with AI"}
+            </button>
+            {aiError && <span className="text-xs text-red-600">{aiError}</span>}
+            {rationalePending && <span className="text-xs text-gray-400">explaining picks…</span>}
+          </div>
+        </div>
+
         <label className={label}>
           Schedule Name
           <input
@@ -380,9 +545,24 @@ export function CreateScheduleForm({
               onChange={(e) => setCostPriority(Number(e.target.value))}
             />
           </div>
+          <div className={label}>
+            <div className="flex justify-between text-xs">
+              <span>Prize money ↔ Ranking points</span>
+              <span className="text-gray-500">
+                {goalPriority < 40 ? "money" : goalPriority > 60 ? "points" : "balanced"}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={goalPriority}
+              onChange={(e) => setGoalPriority(Number(e.target.value))}
+            />
+          </div>
           <span className="text-xs text-gray-400">
-            Higher = the optimizer trades more points to cut travel time / cost. Set both low to
-            chase points.
+            Rest / cost: higher trades value to cut travel time / cost. Points vs money: slide toward
+            what you&apos;re chasing this swing.
           </span>
         </div>
 
@@ -495,6 +675,9 @@ export function CreateScheduleForm({
                         </>
                       )}
                     </div>
+                    {aiRationale[t.id] && (
+                      <div className="mt-1 text-xs italic text-gray-500">{aiRationale[t.id]}</div>
+                    )}
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     <a
@@ -506,8 +689,9 @@ export function CreateScheduleForm({
                       Find stays ↗
                     </a>
                     <button
+                      type="button"
                       onClick={() => remove(t.id)}
-                      className="text-xs text-gray-500 hover:text-red-600"
+                      className="inline-flex min-h-[44px] items-center text-xs text-gray-500 hover:text-red-600"
                     >
                       Remove
                     </button>
@@ -660,7 +844,7 @@ export function CreateScheduleForm({
                   <div>
                     {t.name}{" "}
                     <span className="text-gray-500">
-                      · {formatDateRange(t.startDate, t.endDate)} · {formatTour(t.tour)}
+                      · {formatDateRange(t.startDate, t.endDate)} · {formatTierLabel(t.tier)}
                     </span>
                   </div>
                   <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
