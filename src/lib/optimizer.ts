@@ -18,7 +18,7 @@ import type { AcceptanceStatus } from "@/lib/tournaments";
 // Result rounds, earliest exit → title. A player's "result" is the round they
 // bow out in (W = won the title). pointsByRound/prizeMoneyByRound are keyed this
 // way, so the keys present define the ladder (robust to byes / draw sizes).
-const ROUND_ORDER = ["R128", "R64", "R32", "R16", "QF", "SF", "F", "W"] as const;
+export const ROUND_ORDER = ["R128", "R64", "R32", "R16", "QF", "SF", "F", "W"] as const;
 
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
 
