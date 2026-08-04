@@ -5,9 +5,22 @@ import {
   expectedResultLabel,
   eventExpectedValue,
   optimizeSchedule,
+  cadenceForRest,
   type CandidateEvent,
   type OptimizerWeights,
 } from "./optimizer";
+
+describe("cadenceForRest", () => {
+  it("maps rest priority to 5 descending cadence bands", () => {
+    expect(cadenceForRest(100)).toBe(1);
+    expect(cadenceForRest(80)).toBe(1);
+    expect(cadenceForRest(79)).toBe(2);
+    expect(cadenceForRest(60)).toBe(2);
+    expect(cadenceForRest(40)).toBe(3);
+    expect(cadenceForRest(20)).toBe(4);
+    expect(cadenceForRest(0)).toBe(5);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Win probability
@@ -209,6 +222,20 @@ describe("optimizeSchedule", () => {
     });
     expect(optimizeSchedule([E, F], W({ points: 1 })).events.map((e) => e.id)).toEqual(["E"]);
     expect(optimizeSchedule([E, F], W({ money: 1 })).events.map((e) => e.id)).toEqual(["F"]);
+  });
+
+  it("congestion thins a tightly-spaced schedule at high rest (BRA-69)", () => {
+    // A, B, C are 10 days apart start-to-start. No cadence limit → play all.
+    const relaxed = optimizeSchedule([A, B, C], W({ points: 1 }), {
+      congestion: { targetPerMonth: 5, weight: 0 },
+    });
+    expect(relaxed.events).toHaveLength(3);
+    // Protect-body cadence (1/month, target gap 30d) heavily penalizes the tight
+    // 10-day spacing, so the optimizer thins the schedule.
+    const protective = optimizeSchedule([A, B, C], W({ points: 1 }), {
+      congestion: { targetPerMonth: 1, weight: 2 },
+    });
+    expect(protective.events.length).toBeLessThan(3);
   });
 
   it("a stronger player earns more expected points at the same event", () => {
