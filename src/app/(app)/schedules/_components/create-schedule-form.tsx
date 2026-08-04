@@ -7,6 +7,7 @@ import {
   optimizeSchedule,
   scheduleTotals,
   eventExpectedValue,
+  cadenceForRest,
   type OptimizerWeights,
 } from "@/lib/optimizer";
 import type { AcceptanceStatus } from "@/lib/tournaments";
@@ -67,6 +68,13 @@ function scheduleWeights(restPriority: number, costPriority: number, goalPriorit
     weightTravelTime: w.travelTime,
     weightTravelCost: w.travelCost,
   };
+}
+
+// Rest priority → the optimizer's soft cadence cap (BRA-69): a target monthly
+// event rate plus how hard to enforce spacing (weight 0 at rest 0, so the
+// lowest band imposes no cadence limit — play as many as feasible).
+function congestionFor(restPriority: number): { targetPerMonth: number; weight: number } {
+  return { targetPerMonth: cadenceForRest(restPriority), weight: (restPriority / 100) * 2 };
 }
 
 function numberOrUndefined(v: string): number | undefined {
@@ -257,6 +265,7 @@ export function CreateScheduleForm({
       maxEvents: numberOrUndefined(maxEvents),
       minRestDays: numberOrUndefined(minRestDays),
       budgetCap: numberOrUndefined(budgetCap),
+      congestion: congestionFor(restPriority),
     });
     if (result.events.length === 0) {
       setSuggestion("No feasible events in that window and budget.");
@@ -300,6 +309,7 @@ export function CreateScheduleForm({
       maxEvents: intent.maxEvents ?? numberOrUndefined(maxEvents),
       minRestDays: intent.minRestDays ?? numberOrUndefined(minRestDays),
       budgetCap: intent.budgetCap ?? numberOrUndefined(budgetCap),
+      congestion: congestionFor(rest),
     });
 
     const noted = [
