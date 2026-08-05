@@ -130,6 +130,8 @@ function PrioritySlider({
         max={100}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
+        aria-label={title}
+        aria-valuetext={lean}
       />
       <div className="flex justify-between text-[11px] text-gray-400">
         <span>{left}</span>
