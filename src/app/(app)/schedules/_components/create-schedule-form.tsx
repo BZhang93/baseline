@@ -78,6 +78,70 @@ function recoveryFor(restPriority: number): { targetPerMonth: number; weight: nu
   return { targetPerMonth: cadenceForRest(restPriority), weight: (restPriority / 100) * 2 };
 }
 
+// Plain-language readout of where each priority slider sits, so a bare 0-100
+// number never has to be interpreted on its own. The five bands run low→high
+// and the extremes reuse the pole labels shown under the track.
+function bandLabel(v: number, labels: [string, string, string, string, string]): string {
+  if (v >= 80) return labels[4];
+  if (v >= 60) return labels[3];
+  if (v >= 40) return labels[2];
+  if (v >= 20) return labels[1];
+  return labels[0];
+}
+function restLean(v: number): string {
+  return bandLabel(v, ["Play often", "Light rest", "Balanced", "Cautious", "Protect body"]);
+}
+function costLean(v: number): string {
+  return bandLabel(v, ["Spend freely", "Cost-relaxed", "Balanced", "Cost-conscious", "Save money"]);
+}
+function goalLean(v: number): string {
+  if (v > 60) return "Ranking points";
+  if (v < 40) return "Prize money";
+  return "Balanced";
+}
+
+// One labeled slider: title + current lean in words on top, poles under the
+// track so both ends are self-explanatory.
+function PrioritySlider({
+  title,
+  value,
+  onChange,
+  lean,
+  left,
+  right,
+}: {
+  title: string;
+  value: number;
+  onChange: (v: number) => void;
+  lean: string;
+  left: string;
+  right: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1 text-sm">
+      <div className="flex justify-between text-xs">
+        <span>{title}</span>
+        <span className="font-medium text-gray-700">
+          {lean} <span className="font-normal text-gray-400">· {value}</span>
+        </span>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={100}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        aria-label={title}
+        aria-valuetext={`${lean}, ${value}`}
+      />
+      <div className="flex justify-between text-[11px] text-gray-400">
+        <span>{left}</span>
+        <span>{right}</span>
+      </div>
+    </div>
+  );
+}
+
 function numberOrUndefined(v: string): number | undefined {
   if (v.trim() === "") return undefined;
   const n = Number(v);
@@ -531,50 +595,37 @@ export function CreateScheduleForm({
 
         <div className="flex flex-col gap-3">
           <span className="text-sm">Priorities</span>
-          <div className={label}>
-            <div className="flex justify-between text-xs">
-              <span>Protect body (rest / less travel)</span>
-              <span className="text-gray-500">{restPriority}</span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={restPriority}
-              onChange={(e) => setRestPriority(Number(e.target.value))}
-            />
-          </div>
-          <div className={label}>
-            <div className="flex justify-between text-xs">
-              <span>Save on cost (cheaper travel)</span>
-              <span className="text-gray-500">{costPriority}</span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={costPriority}
-              onChange={(e) => setCostPriority(Number(e.target.value))}
-            />
-          </div>
-          <div className={label}>
-            <div className="flex justify-between text-xs">
-              <span>Prize money ↔ Ranking points</span>
-              <span className="text-gray-500">
-                {goalPriority < 40 ? "money" : goalPriority > 60 ? "points" : "balanced"}
-              </span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={goalPriority}
-              onChange={(e) => setGoalPriority(Number(e.target.value))}
-            />
-          </div>
+          <PrioritySlider
+            title="Rest & recovery"
+            value={restPriority}
+            onChange={setRestPriority}
+            lean={restLean(restPriority)}
+            left="Play often"
+            right="Protect body"
+          />
+          <PrioritySlider
+            title="Travel cost"
+            value={costPriority}
+            onChange={setCostPriority}
+            lean={costLean(costPriority)}
+            left="Spend freely"
+            right="Save money"
+          />
+          <PrioritySlider
+            title="Prize money vs. points"
+            value={goalPriority}
+            onChange={setGoalPriority}
+            lean={goalLean(goalPriority)}
+            left="Prize money"
+            right="Ranking points"
+          />
           <span className="text-xs text-gray-400">
-            Rest / cost: higher trades value to cut travel time / cost. Points vs money: slide toward
-            what you&apos;re chasing this swing.
+            Higher rest or savings trades some event value to cut travel.{" "}
+            {cadenceForRest(restPriority) >= 5
+              ? "Targeting as many events as your calendar allows."
+              : `Aiming for about ${cadenceForRest(restPriority)} event${
+                  cadenceForRest(restPriority) === 1 ? "" : "s"
+                } a month.`}
           </span>
         </div>
 
