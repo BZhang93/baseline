@@ -99,6 +99,23 @@ describe("loadIntoDatabase", () => {
     expect(arg.where).toEqual({ name_edition: { name: "Test Open", edition: 2026 } });
   });
 
+  it("scopes pruning to the source's date window, not the whole edition/year", async () => {
+    // Regression (review C1): a July-only source must never prune Aug–Nov events
+    // that merely share edition 2026. The prune query is date-bounded to the
+    // source's [earliest, latest] start date, so out-of-window events are never
+    // even fetched as prune candidates.
+    const { prisma } = fakePrisma();
+    const findMany = prisma.tournament.findMany as unknown as ReturnType<typeof vi.fn>;
+
+    await loadIntoDatabase(prisma, source); // source covers only 2026-07-01
+
+    expect(findMany).toHaveBeenCalledOnce();
+    const where = findMany.mock.calls[0][0].where;
+    expect(where.edition).toEqual({ in: [2026] });
+    expect(where.startDate.gte).toEqual(new Date("2026-07-01"));
+    expect(where.startDate.lte).toEqual(new Date("2026-07-01"));
+  });
+
   it("warns and leaves categoryId null when no category matches", async () => {
     const { prisma, tournamentUpsert } = fakePrisma();
     // Source whose tournament tier has no matching category.
