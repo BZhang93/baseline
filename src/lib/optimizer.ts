@@ -13,6 +13,7 @@
 
 import { roundValue } from "@/lib/round-values";
 import { haversineKm, estimateTravel, type Coord } from "@/lib/travel";
+import { toUsd } from "@/lib/currency";
 import type { AcceptanceStatus } from "@/lib/tournaments";
 
 // Result rounds, earliest exit → title. A player's "result" is the round they
@@ -87,6 +88,10 @@ export interface CandidateEvent {
   long: number | null;
   pointsByRound: unknown;
   prizeMoneyByRound: unknown;
+  // ISO currency of prizeMoneyByRound (e.g. "USD", "EUR", "JPY"). Prize is
+  // converted to USD in eventExpectedValue so events listed in different
+  // currencies sum and compare on one scale (review H1). Defaults to USD.
+  currency?: string;
   // Live cutoff rank — field-strength proxy for the win-probability model.
   fieldRefRank: number | null;
   // The player's applicable rank for this event (null if it doesn't apply,
@@ -191,7 +196,12 @@ export function eventExpectedValue(c: CandidateEvent): {
   const accept = ACCEPTANCE_WEIGHT[c.acceptance];
   return {
     expectedPoints: Math.round(expectedRoundValue(c.pointsByRound, winProb) * accept),
-    expectedPrize: Math.round(expectedRoundValue(c.prizeMoneyByRound, winProb) * accept),
+    // Convert to USD here so mixed-currency prize money (e.g. a JPY ITF event vs a
+    // USD event) sums and compares on one scale everywhere downstream — the money
+    // objective term, the pool scale, and the live schedule totals (review H1).
+    expectedPrize: Math.round(
+      toUsd(expectedRoundValue(c.prizeMoneyByRound, winProb) * accept, c.currency ?? "USD"),
+    ),
     // The round the player would reach *if* they get in (not acceptance-scaled).
     resultLabel: expectedResultLabel(c.pointsByRound, winProb),
   };
