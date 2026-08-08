@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
+import { Prisma } from "@/generated/prisma/client";
 import type { Player } from "@/generated/prisma/client";
 
 export interface CurrentSession {
@@ -24,15 +25,32 @@ export const getCurrentSession = cache(
     } = await supabase.auth.getUser();
     if (!user) return null;
 
-    const player =
-      (await prisma.player.findUnique({ where: { userId: user.id } })) ??
-      // Name starts empty so onboarding requires the player's real name
-      // (email is prefilled separately from the auth identity).
-      (await prisma.player.create({ data: { userId: user.id } }));
+    const player = await getOrCreatePlayer(user.id);
 
     return { userId: user.id, email: user.email ?? null, player };
   },
 );
+
+// One Player per auth user. The common path is a read (no write on load); the
+// Player is created on first access. Two concurrent first requests from the same
+// new user can both miss the findUnique and race the create — the loser then hits
+// the `userId` unique constraint (P2002). We swallow that specific conflict and
+// re-read, so a brand-new user is never shown a 500 mid-onboarding.
+async function getOrCreatePlayer(userId: string): Promise<Player> {
+  const existing = await prisma.player.findUnique({ where: { userId } });
+  if (existing) return existing;
+  try {
+    // Name starts empty so onboarding requires the player's real name (email is
+    // prefilled separately from the auth identity).
+    return await prisma.player.create({ data: { userId } });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      const raced = await prisma.player.findUnique({ where: { userId } });
+      if (raced) return raced;
+    }
+    throw e;
+  }
+}
 
 // The three fields onboarding requires before the app is usable (BRA-101).
 export function isProfileComplete(player: Player): boolean {
