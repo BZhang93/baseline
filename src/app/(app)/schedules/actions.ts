@@ -19,6 +19,7 @@ import {
 } from "@/lib/schedules";
 import type { TransportMode } from "@/generated/prisma/enums";
 import { aiConfigured, aiChatJson } from "@/lib/ai/client";
+import { checkAiRateLimit, type RateDecision } from "@/lib/ai/rate-limit";
 import {
   normalizePlanIntent,
   buildPlanUserPrompt,
@@ -28,10 +29,18 @@ import {
 import {
   normalizeRationales,
   buildRationaleUserPrompt,
+  sanitizePickFacts,
+  sanitizeRationaleContext,
   RATIONALE_SYSTEM_PROMPT,
   type PickFact,
   type RationaleContext,
 } from "@/lib/ai/rationale";
+
+// Shared user-facing copy when a player hits their AI quota (review H4).
+function aiRateLimitMessage(rate: RateDecision): string {
+  const mins = Math.max(1, Math.ceil((rate.retryAfterSeconds ?? 0) / 60));
+  return `You've reached the AI request limit. Try again in about ${mins} minute${mins === 1 ? "" : "s"}.`;
+}
 
 // AI natural-language front door (BRA-47): turn a plain-language request into
 // validated optimizer INPUTS. The LLM never selects events — it only fills the
@@ -44,6 +53,8 @@ export async function planFromTextAction(
   if (!session) return { error: "You're not signed in." };
   if (!text.trim()) return { error: "Describe what you're looking for first." };
   if (!aiConfigured()) return { error: "AI planning isn't set up yet." };
+  const rate = checkAiRateLimit(session.player.id);
+  if (!rate.ok) return { error: aiRateLimitMessage(rate) };
   try {
     const today = new Date().toISOString().slice(0, 10);
     const raw = await aiChatJson(
@@ -70,10 +81,18 @@ export async function explainPlanAction(
   const session = await getCurrentSession();
   if (!session) return { error: "You're not signed in." };
   if (!aiConfigured()) return { error: "AI isn't set up yet." };
-  if (picks.length === 0) return { rationales: [] };
+  // Bound the client-supplied picks + context before they become a paid prompt (H3).
+  const safePicks = sanitizePickFacts(picks);
+  const safeContext = sanitizeRationaleContext(context);
+  if (safePicks.length === 0) return { rationales: [] };
+  const rate = checkAiRateLimit(session.player.id);
+  if (!rate.ok) return { error: aiRateLimitMessage(rate) };
   try {
-    const raw = await aiChatJson(RATIONALE_SYSTEM_PROMPT, buildRationaleUserPrompt(picks, context));
-    return { rationales: normalizeRationales(raw, picks.length) };
+    const raw = await aiChatJson(
+      RATIONALE_SYSTEM_PROMPT,
+      buildRationaleUserPrompt(safePicks, safeContext),
+    );
+    return { rationales: normalizeRationales(raw, safePicks.length) };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Rationale generation failed." };
   }
