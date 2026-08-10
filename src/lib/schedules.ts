@@ -28,7 +28,6 @@ import {
 import type { TransportMode } from "@/generated/prisma/enums";
 import { arrivalDate, isQualiArrival } from "@/lib/quali";
 import { departureWindow, type DepartureWindow } from "@/lib/departure";
-import { toUsd } from "@/lib/currency";
 
 // A player's applicable rank/cutoff for one event, as the optimizer's
 // round-reached model expects. Shared by the Browse candidate loader and the
@@ -60,6 +59,9 @@ function toCandidate(
     long: t.long,
     pointsByRound: t.category?.pointsByRound ?? {},
     prizeMoneyByRound: t.category?.prizeMoneyByRound ?? {},
+    // Carry the event's prize currency so eventExpectedValue can normalize to USD
+    // (review H1); defaults to USD when the category is missing.
+    currency: t.category?.currency ?? "USD",
     fieldRefRank: cutoffRank,
     playerRankForEvent: rank,
     acceptance: computeGap(rank, cutoffRank, null, null).status,
@@ -79,9 +81,10 @@ export function expectedScheduleTotals(
   for (const t of path) {
     const v = eventExpectedValue(toCandidate(t, player));
     points += v.expectedPoints;
-    // Convert each event's prize to USD so a EUR (ITF) event and a USD event
-    // sum in one currency for net-of-cost math (player-feedback P2-13).
-    prize += toUsd(v.expectedPrize, t.category?.currency ?? "USD");
+    // v.expectedPrize is already USD — eventExpectedValue converts from the
+    // event's currency, so a EUR (ITF) event and a USD event sum in one currency
+    // for net-of-cost math (player-feedback P2-13, review H1).
+    prize += v.expectedPrize;
   }
   return { expectedPoints: Math.round(points), expectedPrize: Math.round(prize) };
 }
@@ -506,6 +509,7 @@ export interface PickerCandidate extends PickerTournament {
   long: number | null;
   pointsByRound: unknown;
   prizeMoneyByRound: unknown;
+  currency?: string; // prize currency, so client-side scoring normalizes to USD (H1)
   fieldRefRank: number | null; // live cutoff rank (field-strength proxy)
   playerRankForEvent: number | null; // player's applicable rank, else null
   acceptance: AcceptanceStatus;

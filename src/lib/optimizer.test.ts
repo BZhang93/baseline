@@ -139,6 +139,24 @@ describe("eventExpectedValue", () => {
     const b = eventExpectedValue(ev({ id: "b", acceptance: "unknown" }));
     expect(a.expectedPoints).toBe(b.expectedPoints);
   });
+
+  it("normalizes prize money to USD by the event's currency (H1)", () => {
+    const usd = eventExpectedValue(ev({ id: "usd", acceptance: "in" }));
+    const eur = eventExpectedValue(ev({ id: "eur", acceptance: "in", currency: "EUR" }));
+    const jpy = eventExpectedValue(ev({ id: "jpy", acceptance: "in", currency: "JPY" }));
+    // Points are currency-independent; only prize is converted.
+    expect(eur.expectedPoints).toBe(usd.expectedPoints);
+    // EUR prize converts up (~1.08×); JPY converts far down — so a nominally huge
+    // ¥ table can no longer dominate the money scale (the core H1 defect).
+    expect(eur.expectedPrize / usd.expectedPrize).toBeCloseTo(1.08, 2);
+    expect(jpy.expectedPrize).toBeLessThan(usd.expectedPrize * 0.1);
+  });
+
+  it("leaves USD/unspecified-currency prize unchanged", () => {
+    const bare = eventExpectedValue(ev({ id: "bare", acceptance: "in" }));
+    const usd = eventExpectedValue(ev({ id: "usd2", acceptance: "in", currency: "USD" }));
+    expect(bare.expectedPrize).toBe(usd.expectedPrize);
+  });
 });
 
 describe("optimizeSchedule", () => {

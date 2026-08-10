@@ -135,16 +135,26 @@ export async function loadData(
     );
   }
 
-  // 2b. Prune tournaments removed from the source (BRA-113). For each edition the
-  // source covers, delete DB events of that edition no longer in the source — but
-  // only if no user schedule references them (ScheduleItem has no cascade, and we
-  // never want to silently drop an event out of someone's saved plan). Cutoff /
-  // accommodation / dining rows cascade with the tournament.
+  // 2b. Prune tournaments removed from the source (BRA-113). A source is complete
+  // only for the DATE WINDOW it actually covers, so pruning is scoped to that
+  // window: delete DB events whose start date falls within [earliest, latest]
+  // source start date and that are no longer in the source. Without this scoping a
+  // partial load — e.g. the July-only seed, whose events all carry edition 2026 —
+  // would prune by year and silently delete the rest of the season's calendar
+  // (Aug–Nov), which shares the same edition. We still never drop an event a saved
+  // schedule references (ScheduleItem has no cascade). Cutoff / accommodation /
+  // dining rows cascade with the tournament.
   const editions = [...new Set(tournaments.map((t) => t.edition))];
-  if (prune && editions.length > 0) {
+  if (prune && tournaments.length > 0) {
+    const startMs = tournaments.map((t) => t.startDate.getTime());
+    const windowStart = new Date(Math.min(...startMs));
+    const windowEnd = new Date(Math.max(...startMs));
     const sourceKeys = new Set(tournaments.map((t) => `${t.name}::${t.edition}`));
     const existing = await prisma.tournament.findMany({
-      where: { edition: { in: editions } },
+      where: {
+        edition: { in: editions },
+        startDate: { gte: windowStart, lte: windowEnd },
+      },
       select: { id: true, name: true, edition: true, _count: { select: { scheduleItems: true } } },
     });
     const stale = existing.filter(
