@@ -67,7 +67,7 @@ export default async function ComparePage({
           Select at least two events in Browse, then hit Compare.
         </p>
       ) : (
-        <div className="mt-4 overflow-x-auto rounded-lg border border-gray-200">
+        <div className="mt-4 overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-xs">
           <table className="min-w-full border-collapse text-sm">
             <thead>
               <tr>
