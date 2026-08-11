@@ -851,7 +851,7 @@ export function CreateScheduleForm({
             return (
               <li
                 key={t.id}
-                className="flex items-start justify-between gap-2 rounded border border-gray-200 px-3 py-2 text-sm"
+                className="flex items-start justify-between gap-2 rounded border border-gray-200 bg-white px-3 py-2 text-sm"
               >
                 <div>
                   <div>
