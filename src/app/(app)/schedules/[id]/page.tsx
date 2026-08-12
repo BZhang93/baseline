@@ -247,15 +247,15 @@ export default async function ScheduleDetailPage({
       <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 rounded-xl border border-gray-200 bg-white shadow-xs p-4 text-sm sm:grid-cols-3">
         <div>
           <div className="text-gray-500">Expected Points</div>
-          <div className="font-medium">{schedule.totals.expectedPoints}</div>
+          <div className="text-lg font-medium">{schedule.totals.expectedPoints}</div>
         </div>
         <div>
           <div className="text-gray-500">Expected Prize</div>
-          <div className="font-medium">{formatMoney(schedule.totals.expectedPrize)}</div>
+          <div className="text-lg font-medium">{formatMoney(schedule.totals.expectedPrize)}</div>
         </div>
         <div>
           <div className="text-gray-500">Est. Travel</div>
-          <div className="font-medium">
+          <div className="text-lg font-medium">
             {formatTravelTime(schedule.totals.travelTimeMin)} · {formatMoney(schedule.totals.travelCost)}
           </div>
         </div>

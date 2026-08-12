@@ -24,7 +24,7 @@ export function TripCosts({ id, initial }: { id: string; initial: number }) {
   if (!editing) {
     return (
       <div className="flex items-center gap-2">
-        <span className="font-medium">{formatMoney(saved)}</span>
+        <span className="text-lg font-medium">{formatMoney(saved)}</span>
         <button onClick={() => setEditing(true)} className="text-xs text-gray-500 underline">
           Edit
         </button>
