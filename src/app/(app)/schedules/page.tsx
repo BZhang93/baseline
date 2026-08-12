@@ -13,7 +13,7 @@ function ScheduleCardLink({ s }: { s: ScheduleSummary }) {
   return (
     <Link
       href={`/schedules/${s.id}`}
-      className="block rounded-lg border border-gray-200 p-4 hover:border-gray-400"
+      className="block rounded-xl border border-gray-200 bg-white shadow-xs p-4 hover:border-gray-400"
     >
         <div className="flex items-baseline justify-between">
           <h3 className="font-medium">{s.name}</h3>

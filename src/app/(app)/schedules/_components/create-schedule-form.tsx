@@ -579,7 +579,7 @@ export function CreateScheduleForm({
         </div>
 
         {/* Live score summary for the current selection. */}
-        <div className="grid grid-cols-2 gap-3 rounded border border-gray-200 p-3 text-sm sm:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 rounded-lg border border-gray-200 bg-white shadow-xs p-3 text-sm sm:grid-cols-5">
           <div>
             <div className="text-xs text-gray-500">Exp. points</div>
             <div className="font-medium">{totals.expectedPoints}</div>
@@ -664,7 +664,7 @@ export function CreateScheduleForm({
                 <li
                   key={t.id}
                   className={`flex items-start justify-between rounded border px-3 py-2 text-sm ${
-                    isConflict ? "border-red-200 bg-red-50" : "border-gray-200"
+                    isConflict ? "border-red-200 bg-red-50" : "border-gray-200 bg-white"
                   }`}
                 >
                   <div>
@@ -716,7 +716,7 @@ export function CreateScheduleForm({
         )}
 
         {legs.length > 0 && (
-          <div className="mt-4 rounded-lg border border-gray-200 p-3">
+          <div className="mt-4 rounded-xl border border-gray-200 bg-white shadow-xs p-3">
             <h3 className="text-sm font-medium text-gray-700">Getting around</h3>
             <p className="text-xs text-gray-400">
               Recommended mode per hop — picked by your priorities &amp; transport prefs. You can
@@ -851,7 +851,7 @@ export function CreateScheduleForm({
             return (
               <li
                 key={t.id}
-                className="flex items-start justify-between gap-2 rounded border border-gray-200 px-3 py-2 text-sm"
+                className="flex items-start justify-between gap-2 rounded border border-gray-200 bg-white px-3 py-2 text-sm"
               >
                 <div>
                   <div>

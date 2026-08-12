@@ -21,7 +21,7 @@ function EventCard({
 }) {
   const dep = departureWindow(t.startDate, t.endDate, t.drawSize);
   return (
-    <li className={`rounded-lg border p-4 ${selected ? "border-black" : "border-gray-200"}`}>
+    <li className={`rounded-xl border bg-white p-4 shadow-xs ${selected ? "border-black" : "border-gray-200"}`}>
       <div className="flex items-start justify-between gap-3">
         <label className="flex cursor-pointer items-start gap-2">
           <input type="checkbox" checked={selected} onChange={onToggle} className="mt-1" />

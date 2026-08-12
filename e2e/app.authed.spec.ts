@@ -19,11 +19,15 @@ test("selecting events on Browse reveals the create-from-selection action", asyn
   await page.goto("/browse");
   await expect(page.getByRole("heading", { name: "Browse Tournaments" })).toBeVisible();
 
-  const checkboxes = page.getByRole("checkbox");
-  const count = await checkboxes.count();
+  // Scope to the per-event checkboxes inside the results list — the filter
+  // controls above the list (e.g. "Hide events past my cutoff") are also
+  // checkboxes, so a bare getByRole("checkbox").first() would toggle a filter
+  // instead of selecting an event.
+  const eventCheckboxes = page.locator("li input[type=checkbox]");
+  const count = await eventCheckboxes.count();
   test.skip(count === 0, "No tournaments in this environment to select.");
 
-  await checkboxes.first().check();
+  await eventCheckboxes.first().check();
   await expect(page.getByText(/\d+ selected/)).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Create schedule from selection" }),

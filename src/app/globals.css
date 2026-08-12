@@ -6,8 +6,11 @@
    clash with the light UI. */
 :root {
   color-scheme: light;
-  --background: #ffffff;
+  --background: #ffffff; /* card / surface white */
   --foreground: #171717;
+  /* Readability polish: a cool ground so white cards read as distinct surfaces
+     instead of white-on-white. */
+  --app-bg: #eef0f4;
 }
 
 @theme inline {
@@ -17,9 +20,17 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* Readability polish: darken secondary text one step. The old gray-500 faded
+   out against white; gray-500 is used only for text in this app, so shifting it
+   to the gray-600 value is a safe global change. gray-400 (fainter captions)
+   and gray-600 stay as they are, preserving the hierarchy. */
+@theme {
+  --color-gray-500: #4b5563;
+}
+
 html,
 body {
-  background: var(--background);
+  background: var(--app-bg);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }

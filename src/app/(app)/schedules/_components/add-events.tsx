@@ -43,7 +43,7 @@ export function AddEvents({
       </button>
 
       {open && (
-        <div className="mt-3 rounded-lg border border-gray-200 p-3">
+        <div className="mt-3 rounded-xl border border-gray-200 bg-white shadow-xs p-3">
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}

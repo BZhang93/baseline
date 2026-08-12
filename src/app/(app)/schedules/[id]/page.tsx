@@ -43,7 +43,7 @@ function EventRow({
   e: ScheduleEventView;
 }) {
   return (
-    <div className={`rounded-lg border p-4 ${e.conflict || e.circuitMismatch ? "border-red-200 bg-red-50" : "border-gray-200"}`}>
+    <div className={`rounded-xl border p-4 shadow-xs ${e.conflict || e.circuitMismatch ? "border-red-200 bg-red-50" : "border-gray-200 bg-white"}`}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="font-medium">{e.name}</h3>
@@ -244,18 +244,18 @@ export default async function ScheduleDetailPage({
       )}
 
       {/* Totals — expected value (round-reached), net of costs. */}
-      <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 rounded-lg border border-gray-200 p-4 text-sm sm:grid-cols-3">
+      <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 rounded-xl border border-gray-200 bg-white shadow-xs p-4 text-sm sm:grid-cols-3">
         <div>
           <div className="text-gray-500">Expected Points</div>
-          <div className="font-medium">{schedule.totals.expectedPoints}</div>
+          <div className="text-lg font-medium">{schedule.totals.expectedPoints}</div>
         </div>
         <div>
           <div className="text-gray-500">Expected Prize</div>
-          <div className="font-medium">{formatMoney(schedule.totals.expectedPrize)}</div>
+          <div className="text-lg font-medium">{formatMoney(schedule.totals.expectedPrize)}</div>
         </div>
         <div>
           <div className="text-gray-500">Est. Travel</div>
-          <div className="font-medium">
+          <div className="text-lg font-medium">
             {formatTravelTime(schedule.totals.travelTimeMin)} · {formatMoney(schedule.totals.travelCost)}
           </div>
         </div>

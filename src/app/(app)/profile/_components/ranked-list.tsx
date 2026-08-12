@@ -43,7 +43,7 @@ export function RankedList<T extends string>({
           {selected.map((v, i) => (
             <li
               key={v}
-              className="flex items-center justify-between rounded border border-gray-200 px-3 py-1.5 text-sm"
+              className="flex items-center justify-between rounded border border-gray-200 bg-white px-3 py-1.5 text-sm"
             >
               <span>
                 <span className="text-gray-400">{i + 1}.</span> {format(v)}
