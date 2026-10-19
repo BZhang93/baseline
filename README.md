@@ -1,10 +1,50 @@
 # Baseline
 
-Tour logistics for professional tennis players — minimize travel time and cost,
-maximize ranking points and prize money, and surface accommodation/food options.
+**Schedule planning for aspiring pro tennis players trying to break through to the ATP tour.**
 
-This repo is the **web app** (Next.js). The data scraper is a separate Python
-service (a later ticket). See the PRD in Linear for the full product spec.
+The climb from the ITF and Challenger circuits to the main tour is a logistics
+problem as much as a tennis one. A player has a limited budget, a limited number
+of weeks, a body that needs recovery, and a calendar of hundreds of events across
+the world, each with its own entry cutoff, surface, prize money, and travel cost.
+Most players plan this by gut feel and spreadsheets. Baseline replaces that with
+a planner that weighs all of it at once.
+
+## What it does
+
+- **Optimizes a season schedule.** Given a player's ranking, budget, home base,
+  and goals, it picks the set of events that best balances ranking points and
+  prize money against travel cost and time.
+- **Respects physical limits.** A "protect my body" dial thins the schedule by
+  capping event frequency and penalizing long hauls and big time-zone changes.
+- **Trades points against money.** A priority dial lets a player lean toward
+  ranking points (to climb) or prize money (to stay funded).
+- **Knows what you can actually get into.** Compares a player's rank against each
+  event's entry cutoff, including qualifying, so the plan is about events the
+  player can realistically play.
+- **Forecasts results per event.** Estimates how deep a player is likely to go
+  (for example "Likely QF, 30% SF+") and the expected points and prize money.
+- **Counts the real cost.** Travel, lodging, and entry costs against expected
+  prize money, with currencies converted, to show net after costs.
+- **Plans in plain language.** "Plan with AI" turns a request like "clay swing in
+  Europe, keep it light" into validated optimizer inputs. The AI never picks
+  events itself: the deterministic optimizer does, and the AI only explains the
+  picks.
+- **Browse and compare.** Filter the calendar by region, tour, and surface,
+  surface events reachable within budget, and compare events side by side.
+- **Booking links.** Deep links for travel and lodging, and links to each
+  event's official site.
+
+## Who it is for
+
+Players in the ranking range where scheduling decisions are hard and expensive:
+roughly the ITF and Challenger levels, competing for entry into ATP and WTA
+events. Men's and women's tours are both supported.
+
+## Status
+
+Working prototype running on a curated calendar of real events. Win forecasts
+currently use a rank-based placeholder; the plan is to replace it with ratings
+built from match results and real draws once a paid data feed is connected.
 
 ## Tech stack
 
@@ -59,6 +99,7 @@ Fill them into `.env`:
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Data API → anon public key                   |
 | `DATABASE_URL`                  | Database → pooled connection (port 6543)     |
 | `DIRECT_URL`                    | Database → direct connection (port 5432)     |
+| `AI_API_KEY`                    | Optional. Enables "Plan with AI" (OpenAI-compatible API key) |
 
 > Never commit `.env`. Only `.env.example` is tracked in git.
 
