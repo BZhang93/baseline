@@ -254,6 +254,16 @@ describe("optimizeSchedule", () => {
     expect(protective.events.map((e) => e.id)).toEqual(["H"]);
   });
 
+  it("scales to a large candidate pool without hanging (beam search, BRA-71)", () => {
+    // 50 non-overlapping events — the old exact recursion was exponential here.
+    const many = Array.from({ length: 50 }, (_, i) =>
+      ev({ id: `M${i}`, startDate: d(1 + i * 8), endDate: d(6 + i * 8), lat: 0, long: 0 }),
+    );
+    const r = optimizeSchedule(many, W({ points: 1 }));
+    // Points-only over a fully feasible chain → it should build a long schedule.
+    expect(r.events.length).toBeGreaterThan(30);
+  });
+
   it("a stronger player earns more expected points at the same event", () => {
     const strong = ev({ id: "S", fieldRefRank: 100, playerRankForEvent: 20 });
     const weak = ev({ id: "S", fieldRefRank: 100, playerRankForEvent: 300 });

@@ -18,7 +18,7 @@ import type { AcceptanceStatus } from "@/lib/tournaments";
 // Result rounds, earliest exit → title. A player's "result" is the round they
 // bow out in (W = won the title). pointsByRound/prizeMoneyByRound are keyed this
 // way, so the keys present define the ladder (robust to byes / draw sizes).
-const ROUND_ORDER = ["R128", "R64", "R32", "R16", "QF", "SF", "F", "W"] as const;
+export const ROUND_ORDER = ["R128", "R64", "R32", "R16", "QF", "SF", "F", "W"] as const;
 
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
 
@@ -273,62 +273,76 @@ export function optimizeSchedule(
     return leg ?? { minutes: 0, cost: 0 };
   }
 
+  // Marginal objective of adding `e` after `prev` (null = first) over the leg
+  // between them: normalized value minus travel minus the recovery/load penalty
+  // (cadence + long-haul + time-zone, BRA-69).
+  function marginal(
+    prev: CandidateEvent | null,
+    e: CandidateEvent,
+    leg: { minutes: number; cost: number },
+  ): number {
+    const evE = ev.get(e.id)!;
+    let recoveryPenalty = 0;
+    if (prev && recovery) {
+      const gapDays = (e.startDate.getTime() - prev.startDate.getTime()) / DAY_MS;
+      const targetGapDays = 30 / recovery.targetPerMonth;
+      const cadence = Math.max(0, 1 - gapDays / targetGapDays);
+      let load = 0;
+      if (prev.lat != null && prev.long != null && e.lat != null && e.long != null) {
+        const distKm = haversineKm(
+          { lat: prev.lat, long: prev.long } as Coord,
+          { lat: e.lat, long: e.long } as Coord,
+        );
+        const longHaul = Math.min(1, Math.max(0, (distKm - LONG_HAUL_KM) / LONG_HAUL_KM));
+        const tzHours = Math.abs(prev.long - e.long) / 15; // ~15° of longitude per hour
+        load = longHaul + Math.min(1, tzHours / 10);
+      }
+      recoveryPenalty = recovery.weight * (cadence + load);
+    }
+    return (
+      w.points * (evE.expectedPoints / pScale) +
+      w.money * (evE.expectedPrize / mScale) -
+      w.travelTime * (leg.minutes / tScale) -
+      w.travelCost * (leg.cost / cScale) -
+      recoveryPenalty
+    );
+  }
+
+  // Beam search over date-sorted candidates (BRA-71): keep the top-K partial
+  // schedules, extending each with the next feasible event. Bounded — O(n·K) —
+  // so it stays fast on the full-season calendar where the old exact recursion
+  // blew up exponentially. K is wide enough to be exact for the small pools we
+  // had before real data. The empty schedule is always kept, so a fresh start at
+  // any later event stays reachable.
+  const BEAM_WIDTH = 250;
+  type BeamState = { ids: string[]; prev: CandidateEvent | null; score: number; cost: number };
+  const EMPTY: BeamState = { ids: [], prev: null, score: 0, cost: 0 };
+  let beam: BeamState[] = [EMPTY];
   let best: { score: number; ids: string[] } = { score: -Infinity, ids: [] };
 
-  function search(
-    startIdx: number,
-    prev: CandidateEvent | null,
-    chosen: string[],
-    accScore: number,
-    accCost: number,
-  ) {
-    if (chosen.length > 0 && accScore > best.score) {
-      best = { score: accScore, ids: chosen.slice() };
-    }
-    if (maxEvents != null && chosen.length >= maxEvents) return;
-
-    for (let i = startIdx; i < pool.length; i++) {
-      const e = pool[i];
+  for (const e of pool) {
+    const extended: BeamState[] = [];
+    for (const s of beam) {
+      if (maxEvents != null && s.ids.length >= maxEvents) continue;
       let leg = { minutes: 0, cost: 0 };
-      if (prev) {
-        const t = transition(prev, e);
+      if (s.prev) {
+        const t = transition(s.prev, e);
         if (!t) continue;
         leg = t;
       }
-      if (budgetCap != null && accCost + leg.cost > budgetCap) continue;
-
-      const evE = ev.get(e.id)!;
-      // Recovery/load penalty (BRA-69): cadence (events tighter than the target
-      // rate) + travel load (long-haul distance and time-zone jump) on the leg
-      // from the previous pick, all scaled by the rest-priority weight.
-      let recoveryPenalty = 0;
-      if (prev && recovery) {
-        const gapDays = (e.startDate.getTime() - prev.startDate.getTime()) / DAY_MS;
-        const targetGapDays = 30 / recovery.targetPerMonth;
-        const cadence = Math.max(0, 1 - gapDays / targetGapDays);
-        let load = 0;
-        if (prev.lat != null && prev.long != null && e.lat != null && e.long != null) {
-          const distKm = haversineKm(
-            { lat: prev.lat, long: prev.long } as Coord,
-            { lat: e.lat, long: e.long } as Coord,
-          );
-          const longHaul = Math.min(1, Math.max(0, (distKm - LONG_HAUL_KM) / LONG_HAUL_KM));
-          const tzHours = Math.abs(prev.long - e.long) / 15; // ~15° of longitude per hour
-          load = longHaul + Math.min(1, tzHours / 10);
-        }
-        recoveryPenalty = recovery.weight * (cadence + load);
-      }
-      const add =
-        w.points * (evE.expectedPoints / pScale) +
-        w.money * (evE.expectedPrize / mScale) -
-        w.travelTime * (leg.minutes / tScale) -
-        w.travelCost * (leg.cost / cScale) -
-        recoveryPenalty;
-
-      search(i + 1, e, [...chosen, e.id], accScore + add, accCost + leg.cost);
+      if (budgetCap != null && s.cost + leg.cost > budgetCap) continue;
+      const score = s.score + marginal(s.prev, e, leg);
+      const ns: BeamState = { ids: [...s.ids, e.id], prev: e, score, cost: s.cost + leg.cost };
+      extended.push(ns);
+      if (score > best.score) best = { score, ids: ns.ids };
+    }
+    if (extended.length > 0) {
+      const ranked = [...beam.filter((s) => s.ids.length > 0), ...extended].sort(
+        (a, b) => b.score - a.score,
+      );
+      beam = [EMPTY, ...ranked.slice(0, BEAM_WIDTH)];
     }
   }
-  search(0, null, [], 0, 0);
 
   // Materialize the chosen schedule with raw totals + rationale.
   const byId = new Map(pool.map((c) => [c.id, c]));

@@ -8,6 +8,7 @@ import {
   type CutoffEstimate,
   type EventChange,
 } from "@/lib/cutoff-estimate";
+import { forecastEvent, type EventForecast } from "@/lib/forecast";
 
 // ---------------------------------------------------------------------------
 // Pure helpers (unit-tested; no DB)
@@ -106,6 +107,9 @@ export interface TournamentView {
   // so the UI can show confidence (BRA-107/108).
   cutoffBasis: CutoffBasis;
   change: EventChange | null;
+  // Event-level advancement forecast: how far the player is likely to go if in
+  // the draw (BRA-148). Rank-based placeholder until results/draws data lands.
+  forecast: EventForecast;
 }
 
 // ---------------------------------------------------------------------------
@@ -171,6 +175,12 @@ export async function getBrowseData(
 
   return tournaments.map((t) => {
     const est = estimates.get(t.id);
+    const forecast = forecastEvent({
+      playerRank: player?.ranking ?? null,
+      fieldRefRank: est?.rank ?? null,
+      pointsByRound: t.category?.pointsByRound,
+      prizeMoneyByRound: t.category?.prizeMoneyByRound,
+    });
     return {
       id: t.id,
       name: t.name,
@@ -194,6 +204,7 @@ export async function getBrowseData(
       ),
       cutoffBasis: est?.basis ?? "estimated",
       change: est?.change ?? null,
+      forecast,
     };
   });
 }
@@ -255,6 +266,12 @@ export async function getCompareData(
         home && t.lat != null && t.long != null
           ? estimateTravel(haversineKm(home, { lat: t.lat, long: t.long }))
           : null;
+      const forecast = forecastEvent({
+        playerRank: player?.ranking ?? null,
+        fieldRefRank: est?.rank ?? null,
+        pointsByRound: t.category?.pointsByRound,
+        prizeMoneyByRound: t.category?.prizeMoneyByRound,
+      });
       return {
         id: t.id,
         name: t.name,
@@ -277,6 +294,7 @@ export async function getCompareData(
         ),
         cutoffBasis: est?.basis ?? "estimated",
         change: est?.change ?? null,
+        forecast,
         travelFromHome: travel ? { minutes: travel.durationMinutes, cost: travel.costEstimate } : null,
       };
     });
